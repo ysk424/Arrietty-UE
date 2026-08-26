@@ -78,6 +78,10 @@ void UArriettyControlWidget::NativeConstruct()
 
     UButton* VrButton = AddButton(Root, TEXT("Dive into Secret World"), VrButtonLabel);
     VrButton->OnClicked.AddDynamic(this, &UArriettyControlWidget::OnToggleVr);
+    VrStatusText = AddText(Root, TEXT("VR: initializing"), 13, FLinearColor(0.55f, 0.75f, 0.9f));
+    TObjectPtr<UTextBlock> ExitButtonLabel;
+    UButton* ExitButton = AddButton(Root, TEXT("Exit Arrietty (Esc)"), ExitButtonLabel);
+    ExitButton->OnClicked.AddDynamic(this, &UArriettyControlWidget::OnExitApplication);
 
     AddSectionTitle(WidgetTree, Root, TEXT("Start Pose"));
     StartPoseText = AddText(Root, TEXT("X 0.00 m   Y -320.00 m   Z 1.50 m"));
@@ -242,6 +246,7 @@ void UArriettyControlWidget::Refresh()
     const FArriettyRideSnapshot& State = Pawn->GetSnapshot();
     VrButtonLabel->SetText(FText::FromString(
         Pawn->IsVrSessionActive() ? TEXT("Back to Real World") : TEXT("Dive into Secret World")));
+    VrStatusText->SetText(FText::FromString(Pawn->GetVrStatusText()));
     StartPoseText->SetText(FText::FromString(FString::Printf(
         TEXT("X %.2f m   Y %.2f m   Z %.2f m\nDirection %.1f degrees"),
         State.PositionMeters.X,
@@ -293,6 +298,7 @@ void UArriettyControlWidget::Refresh()
 }
 
 void UArriettyControlWidget::OnToggleVr() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->ToggleVrSession(); }
+void UArriettyControlWidget::OnExitApplication() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->QuitApplication(); }
 void UArriettyControlWidget::OnStartRide() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->StartRide(); }
 void UArriettyControlWidget::OnToggleFlight() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->ToggleFlight(); }
 void UArriettyControlWidget::OnToggleInstrument() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->ToggleInstrumentPanel(); }

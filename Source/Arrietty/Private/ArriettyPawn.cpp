@@ -23,6 +23,7 @@
 #include "IXRTrackingSystem.h"
 #include "InputCoreTypes.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "TimerManager.h"
 
 #if PLATFORM_WINDOWS
@@ -91,6 +92,16 @@ void AArriettyPawn::BeginPlay()
         RefreshRideSurfaceMode();
         UpdateWorldTransform(false);
     }, 0.1f, false);
+
+    // Start In VR asks OpenXR to create the session before gameplay.  Some
+    // runtimes need a few frames after map load, so verify and retry briefly.
+    GetWorldTimerManager().SetTimer(
+        VrStartupRetryTimer,
+        this,
+        &AArriettyPawn::InitializeVrAtStartup,
+        0.5f,
+        true,
+        0.1f);
 }
 
 void AArriettyPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -139,6 +150,7 @@ void AArriettyPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
     PlayerInputComponent->BindKey(EKeys::NumPadNine, IE_Pressed, this, &AArriettyPawn::SelectPreset4Input);
     PlayerInputComponent->BindKey(EKeys::Add, IE_Pressed, this, &AArriettyPawn::StepPresetUpInput);
     PlayerInputComponent->BindKey(EKeys::Subtract, IE_Pressed, this, &AArriettyPawn::StepPresetDownInput);
+    PlayerInputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AArriettyPawn::QuitApplication);
 }
 
 bool AArriettyPawn::IsRideActive() const
@@ -155,6 +167,21 @@ bool AArriettyPawn::IsHmdAvailable() const
     return GEngine != nullptr && GEngine->XRSystem.IsValid() &&
         GEngine->XRSystem->GetHMDDevice() != nullptr &&
         GEngine->XRSystem->GetHMDDevice()->IsHMDConnected();
+}
+
+FString AArriettyPawn::GetVrStatusText() const
+{
+    const bool bXrLoaded = GEngine != nullptr && GEngine->XRSystem.IsValid();
+    const bool bStereoEnabled = GEngine != nullptr && GEngine->StereoRenderingDevice.IsValid() &&
+        GEngine->StereoRenderingDevice->IsStereoEnabled();
+    const FString RuntimeName = bXrLoaded
+        ? GEngine->XRSystem->GetSystemName().ToString()
+        : TEXT("not loaded");
+    return FString::Printf(
+        TEXT("VR: %s | HMD %s | stereo %s"),
+        *RuntimeName,
+        IsHmdAvailable() ? TEXT("connected") : TEXT("not detected"),
+        bStereoEnabled ? TEXT("ON") : TEXT("OFF"));
 }
 
 FVector2D AArriettyPawn::GetHmdForward() const
@@ -184,21 +211,56 @@ void AArriettyPawn::ToggleVrSession()
         {
             GEngine->XRSystem->GetHMDDevice()->EnableHMD(false);
         }
+        Snapshot.Message = TEXT("VR stopped. Press Dive into Secret World to start it again");
         return;
     }
 
+    TryStartVrSession();
+}
+
+bool AArriettyPawn::TryStartVrSession()
+{
     if (!IsHmdAvailable())
     {
-        Snapshot.Message = TEXT("Could not start VR. Start SteamVR, set it as the active OpenXR runtime, and connect the HMD");
-        return;
+        Snapshot.Message = TEXT("VR start failed: start SteamVR, make it the active OpenXR runtime, and connect the HMD");
+        return false;
     }
-    if (GEngine->XRSystem->GetHMDDevice())
+
+    IHeadMountedDisplay* Hmd = GEngine->XRSystem->GetHMDDevice();
+    if (!Hmd)
     {
-        GEngine->XRSystem->GetHMDDevice()->EnableHMD(true);
+        Snapshot.Message = TEXT("VR start failed: OpenXR did not provide an HMD device");
+        return false;
     }
-    if (GEngine->StereoRenderingDevice.IsValid())
+    Hmd->EnableHMD(true);
+    if (!Hmd->IsHMDEnabled())
     {
+        Snapshot.Message = TEXT("VR start failed: OpenXR could not enable the HMD");
+        return false;
+    }
+    if (!GEngine->StereoRenderingDevice.IsValid())
+    {
+        Snapshot.Message = TEXT("VR start failed: the OpenXR stereo renderer is unavailable");
+        return false;
+    }
+
+    const bool bStereoEnabled = GEngine->StereoRenderingDevice->IsStereoEnabled() ||
         GEngine->StereoRenderingDevice->EnableStereo(true);
+    if (!bStereoEnabled)
+    {
+        Snapshot.Message = TEXT("VR start failed: OpenXR did not start stereo presentation");
+        return false;
+    }
+
+    ActivateVrSession();
+    return true;
+}
+
+void AArriettyPawn::ActivateVrSession()
+{
+    if (!GEngine || !GEngine->XRSystem.IsValid())
+    {
+        return;
     }
     GEngine->XRSystem->SetTrackingOrigin(EHMDTrackingOrigin::LocalFloor);
     GEngine->XRSystem->ResetOrientationAndPosition(0.0f);
@@ -211,6 +273,25 @@ void AArriettyPawn::ToggleVrSession()
     GetWorldTimerManager().SetTimerForNextTick(this, &AArriettyPawn::CalibrateEyeHeight);
     FTimerHandle CalibrationTimer;
     GetWorldTimerManager().SetTimer(CalibrationTimer, this, &AArriettyPawn::CalibrateEyeHeight, 0.5f, false);
+    Snapshot.Message = TEXT("VR active. Press Esc or Exit Arrietty to close the application");
+}
+
+void AArriettyPawn::InitializeVrAtStartup()
+{
+    ++VrStartupAttempts;
+    if (TryStartVrSession() || VrStartupAttempts >= 10)
+    {
+        GetWorldTimerManager().ClearTimer(VrStartupRetryTimer);
+    }
+}
+
+void AArriettyPawn::QuitApplication()
+{
+    StopRide(TEXT("EXIT_APPLICATION"));
+    if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+    {
+        UKismetSystemLibrary::QuitGame(this, PlayerController, EQuitPreference::Quit, false);
+    }
 }
 
 void AArriettyPawn::StartRide()

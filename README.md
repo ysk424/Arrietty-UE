@@ -30,11 +30,11 @@ cd C:\Users\azoo\git\Arrietty-UE
 
 1. SteamVRを起動し、SteamVRをアクティブなOpenXRランタイムにします。
 2. HMDと右VIVEコントローラーを接続します。
-3. `Dive into Secret World`を押します。
+3. Arriettyを起動するとOpenXR VRが自動的に開始します。開始しない場合は、画面のVR状態を確認して`Dive into Secret World`を押します。
 4. テンキー`4`/`6`で開始方向、`8`/`2`で開始位置を合わせます。
 5. T2を数回漕いで起こします。
 6. ハンドルを中央に保ち、テンキー`0`または`Start Ride`を押します。
-7. 開始音の後に走行します。終了は`Back to Real World`です。
+7. 開始音の後に走行します。VRから戻る操作は`Back to Real World`、アプリ終了は`Esc`または`Exit Arrietty`です。
 
 キー割り当ては従来版と同じです。
 
@@ -44,6 +44,7 @@ cd C:\Users\azoo\git\Arrietty-UE
 - `Numpad 7`: 地上 / 飛行モード
 - `Numpad 1` / `3` / `5` / `9`: P1 / P2 / P3 / P4
 - `Numpad +` / `-`: P5〜P7を含む抵抗プリセットの上下移動
+- `Esc`: ログとT2接続を終了してArriettyを閉じる
 
 ## 維持した機能
 
@@ -60,7 +61,7 @@ cd C:\Users\azoo\git\Arrietty-UE
 
 ## 60 FPS設計
 
-Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion Blur無効、動的解像度70〜100%、16.67 msフレーム予算、60 FPS上限を標準設定にしています。起動画面にも実測平均FPSを表示します。60 FPSはシーン、HMD解像度、GPU負荷に依存するため、任意のインポート世界で絶対に保証される値ではありません。目標を下回る場合は動的解像度が先に働きます。
+Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion Blur無効、動的解像度70〜100%を標準設定にしています。一般フレームレート制限はOpenXRのHMD同期を妨げないよう無効化し、VIVEの90 Hzに合わせた11.1 msフレーム予算を使います。起動画面では実測平均FPSを表示し、最低目標を60 FPSとします。実際のFPSはシーン、HMD解像度、GPU負荷に依存します。
 
 ## Blender世界の移行
 

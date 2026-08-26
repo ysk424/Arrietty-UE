@@ -10,7 +10,7 @@
 
 ## 試験
 
-1. `Dive into Secret World`で両眼表示が開始し、`Back to Real World`で戻る。
+1. Arrietty起動時に両眼表示が自動開始する。`Back to Real World`でデスクトップ表示へ戻り、`Dive into Secret World`で再開する。
 2. テンキー8/2がHMD正面、4/6が保存済み進行方向を動かす。
 3. ハンドル中央でテンキー0を押す。T2制御が`FLAT P5`になり、開始音が鳴る。
 4. 20 km/hで1秒走り、仮想距離が約5.56 m増える。
@@ -21,7 +21,8 @@
 9. ステム付近の透明背景計器が読み取れ、追跡微振動で揺れ続けない。
 10. P1〜P7を切り替え、成功応答後だけ表示P番号が変わる。
 11. `Back to Real World`後、`Saved\arrietty_ride.csv`最終行が`BACK_TO_REAL_WORLD`である。
-12. 10分走行し、画面の平均FPSが原則59.5以上、重大なhitchやSteamVRクラッシュがない。
+12. 10分走行し、画面の平均FPSが59.5以上で、VIVEの通常90 Hz動作ではSteamVR再投影が常態化せず、重大なhitchやクラッシュがない。
+13. `Esc`または`Exit Arrietty`で、T2接続を停止してプロセスが正常終了する。
 
 ## 現在の環境上の注意
 

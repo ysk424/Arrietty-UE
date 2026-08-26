@@ -30,6 +30,7 @@ private:
     void Refresh();
 
     UFUNCTION() void OnToggleVr();
+    UFUNCTION() void OnExitApplication();
     UFUNCTION() void OnStartRide();
     UFUNCTION() void OnToggleFlight();
     UFUNCTION() void OnToggleInstrument();
@@ -49,6 +50,7 @@ private:
     UFUNCTION() void OnPanelScaleChanged(float Value);
 
     UPROPERTY() TObjectPtr<UTextBlock> VrButtonLabel;
+    UPROPERTY() TObjectPtr<UTextBlock> VrStatusText;
     UPROPERTY() TObjectPtr<UTextBlock> StartPoseText;
     UPROPERTY() TObjectPtr<UTextBlock> HmdForwardText;
     UPROPERTY() TObjectPtr<UTextBlock> RideButtonLabel;

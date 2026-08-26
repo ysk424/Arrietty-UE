@@ -28,6 +28,7 @@ public:
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
     void ToggleVrSession();
+    void QuitApplication();
     void StartRide();
     void StopRide(const TCHAR* LogEvent = TEXT("STOP"));
     void ToggleFlight();
@@ -43,6 +44,7 @@ public:
     bool IsInstrumentVisible() const { return bInstrumentVisible; }
     bool IsRideActive() const;
     bool IsHmdAvailable() const;
+    FString GetVrStatusText() const;
     FVector2D GetHmdForward() const;
     const FArriettyRideSnapshot& GetSnapshot() const { return Snapshot; }
     const FString& GetInstrumentAnchorStatus() const { return InstrumentAnchorStatus; }
@@ -64,6 +66,9 @@ public:
     void SetPanelScale(double Value);
 
 private:
+    bool TryStartVrSession();
+    void ActivateVrSession();
+    void InitializeVrAtStartup();
     void PumpBluetoothEvents();
     void HandleCscSample(double ReceivedAtSeconds, const FArriettyCscSample& Sample);
     void UpdateSteering();
@@ -119,6 +124,8 @@ private:
     double PanelScale = 1.0;
 
     bool bVrSessionActive = false;
+    int32 VrStartupAttempts = 0;
+    FTimerHandle VrStartupRetryTimer;
     bool bInstrumentVisible = false;
     bool bWorldUsesRideSurfaces = false;
     bool bTrainerSignalReceived = false;
