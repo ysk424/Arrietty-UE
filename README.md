@@ -33,7 +33,7 @@ cd C:\Users\azoo\git\Arrietty-UE
 3. Arriettyを起動するとOpenXR VRが自動的に開始します。開始しない場合は、画面のVR状態を確認して`Dive into Secret World`を押します。
 4. テンキー`4`/`6`で開始方向、`8`/`2`で開始位置を合わせます。
 5. T2を数回漕いで起こします。
-6. ハンドルを中央に保ち、テンキー`0`または`Start Ride`を押します。
+6. HMDで自転車の正面を向き、ハンドルを中央に保ってテンキー`0`または`Start Ride`を押します。この時点のHMD正面を自転車正面として再センターします。
 7. 開始音の後に走行します。VRから戻る操作は`Back to Real World`、アプリ終了は`Esc`または`Exit Arrietty`です。
 
 キー割り当ては従来版と同じです。
@@ -44,6 +44,7 @@ cd C:\Users\azoo\git\Arrietty-UE
 - `Numpad 7`: 地上 / 飛行モード
 - `Numpad 1` / `3` / `5` / `9`: P1 / P2 / P3 / P4
 - `Numpad +` / `-`: P5〜P7を含む抵抗プリセットの上下移動
+- `Numpad .`: 現在向いているHMD方向を自転車正面として再調整
 - `Esc`: ログとT2接続を終了してArriettyを閉じる
 
 ## 維持した機能

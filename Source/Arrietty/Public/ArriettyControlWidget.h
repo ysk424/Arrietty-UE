@@ -30,6 +30,7 @@ private:
     void Refresh();
 
     UFUNCTION() void OnToggleVr();
+    UFUNCTION() void OnRecenterHmd();
     UFUNCTION() void OnExitApplication();
     UFUNCTION() void OnStartRide();
     UFUNCTION() void OnToggleFlight();

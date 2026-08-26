@@ -28,6 +28,7 @@ public:
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
     void ToggleVrSession();
+    void RecenterHmdToBike();
     void QuitApplication();
     void StartRide();
     void StopRide(const TCHAR* LogEvent = TEXT("STOP"));
@@ -46,6 +47,7 @@ public:
     bool IsHmdAvailable() const;
     FString GetVrStatusText() const;
     FVector2D GetHmdForward() const;
+    FVector2D GetBikeWorldForward() const;
     const FArriettyRideSnapshot& GetSnapshot() const { return Snapshot; }
     const FString& GetInstrumentAnchorStatus() const { return InstrumentAnchorStatus; }
     FString GetRideLogPath() const;

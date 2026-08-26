@@ -150,6 +150,7 @@ void AArriettyPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
     PlayerInputComponent->BindKey(EKeys::NumPadNine, IE_Pressed, this, &AArriettyPawn::SelectPreset4Input);
     PlayerInputComponent->BindKey(EKeys::Add, IE_Pressed, this, &AArriettyPawn::StepPresetUpInput);
     PlayerInputComponent->BindKey(EKeys::Subtract, IE_Pressed, this, &AArriettyPawn::StepPresetDownInput);
+    PlayerInputComponent->BindKey(EKeys::Decimal, IE_Pressed, this, &AArriettyPawn::RecenterHmdToBike);
     PlayerInputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AArriettyPawn::QuitApplication);
 }
 
@@ -191,7 +192,13 @@ FVector2D AArriettyPawn::GetHmdForward() const
         return FVector2D::ZeroVector;
     }
     const FVector Forward = Camera->GetForwardVector().GetSafeNormal2D();
-    return FVector2D(Forward.X, -Forward.Y);
+    return FVector2D(Forward.X, Forward.Y);
+}
+
+FVector2D AArriettyPawn::GetBikeWorldForward() const
+{
+    const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+    return FVector2D(Forward.X, Forward.Y);
 }
 
 void AArriettyPawn::ToggleVrSession()
@@ -216,6 +223,23 @@ void AArriettyPawn::ToggleVrSession()
     }
 
     TryStartVrSession();
+}
+
+void AArriettyPawn::RecenterHmdToBike()
+{
+    if (!bVrSessionActive || !IsHmdAvailable())
+    {
+        Snapshot.Message = TEXT("HMD alignment failed: start VR and connect the HMD first");
+        return;
+    }
+
+    // Recenter the tracking-space yaw instead of rotating the Pawn. Rotating
+    // the Pawn would rotate both the bike and HMD together and preserve the
+    // unwanted angular offset between them.
+    GEngine->XRSystem->ResetOrientation(0.0f);
+    bSteeringCalibrated = false;
+    ResetInstrumentAnchor();
+    Snapshot.Message = TEXT("HMD forward aligned to bike forward; keep looking straight while alignment settles");
 }
 
 bool AArriettyPawn::TryStartVrSession()
@@ -307,6 +331,7 @@ void AArriettyPawn::StartRide()
         Snapshot.Message = TEXT("Start the VR session before pressing Numpad 0");
         return;
     }
+    RecenterHmdToBike();
     if (!RideLog || !RideLog->Start())
     {
         Snapshot.Status = EArriettyRideStatus::Error;

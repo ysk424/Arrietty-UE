@@ -4,6 +4,7 @@
 param(
     [string]$PackageRoot = "$PSScriptRoot\..\Dist\Windows",
     [switch]$UseHmd,
+    [switch]$RecenterHmd,
     [ValidateRange(1, 60)]
     [int]$DurationSeconds = 5
 )
@@ -39,6 +40,12 @@ try {
         Select-Object -First 1
     if (-not $target -or $target.MainWindowHandle -eq 0) {
         throw "Arrietty window was not created"
+    }
+
+    if ($RecenterHmd) {
+        [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0100, [IntPtr]0x6E, [IntPtr]0) | Out-Null
+        [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0101, [IntPtr]0x6E, [IntPtr]0) | Out-Null
+        Start-Sleep -Seconds 2
     }
 
     [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0100, [IntPtr]0x1B, [IntPtr]0) | Out-Null

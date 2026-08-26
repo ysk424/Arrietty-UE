@@ -89,6 +89,9 @@ void UArriettyControlWidget::NativeConstruct()
     AddText(Root, TEXT("Numpad 4 / 6: Turn Left / Right"), 13, FLinearColor(0.75f, 0.8f, 0.85f));
     AddText(Root, TEXT("Numpad 8 / 2 follows the current HMD view"), 13, FLinearColor(0.75f, 0.8f, 0.85f));
     HmdForwardText = AddText(Root, TEXT("HMD Forward --"), 13, FLinearColor(0.55f, 0.75f, 0.9f));
+    TObjectPtr<UTextBlock> RecenterButtonLabel;
+    UButton* RecenterButton = AddButton(Root, TEXT("Align HMD to Bike (Numpad .)"), RecenterButtonLabel);
+    RecenterButton->OnClicked.AddDynamic(this, &UArriettyControlWidget::OnRecenterHmd);
     AArriettyPawn* InitialPawn = FindArriettyPawn();
     USpinBox* Move = AddSetting(Root, TEXT("Move (m)"), InitialPawn ? InitialPawn->GetMoveStepMeters() : 0.5, 0.01, 10.0);
     Move->OnValueChanged.AddDynamic(this, &UArriettyControlWidget::OnMoveChanged);
@@ -253,9 +256,16 @@ void UArriettyControlWidget::Refresh()
         State.PositionMeters.Y,
         Arrietty::EyeHeightMeters + State.AltitudeMeters,
         State.HeadingDegrees)));
-    const FVector2D Forward = Pawn->GetHmdForward();
+    const FVector2D HmdForward = Pawn->GetHmdForward();
+    const FVector2D BikeForward = Pawn->GetBikeWorldForward();
+    const double AlignmentDegrees = FMath::RadiansToDegrees(FMath::Atan2(
+        HmdForward.X * BikeForward.Y - HmdForward.Y * BikeForward.X,
+        FVector2D::DotProduct(HmdForward, BikeForward)));
     HmdForwardText->SetText(FText::FromString(FString::Printf(
-        TEXT("HMD Forward X %.3f  Y %.3f"), Forward.X, Forward.Y)));
+        TEXT("HMD UE Forward  X %+.3f  Y %+.3f\nBike UE Forward X %+.3f  Y %+.3f   Offset %+.1f degrees"),
+        HmdForward.X, HmdForward.Y,
+        BikeForward.X, BikeForward.Y,
+        AlignmentDegrees)));
     RideButtonLabel->SetText(FText::FromString(
         Pawn->IsRideActive() ? TEXT("Riding - Back to Real World to Stop") : TEXT("Start Ride (Numpad 0)")));
     RideStatusText->SetText(FText::FromString(FString::Printf(TEXT("Status: %s"), *LexToString(State.Status))));
@@ -298,6 +308,7 @@ void UArriettyControlWidget::Refresh()
 }
 
 void UArriettyControlWidget::OnToggleVr() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->ToggleVrSession(); }
+void UArriettyControlWidget::OnRecenterHmd() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->RecenterHmdToBike(); }
 void UArriettyControlWidget::OnExitApplication() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->QuitApplication(); }
 void UArriettyControlWidget::OnStartRide() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->StartRide(); }
 void UArriettyControlWidget::OnToggleFlight() { if (AArriettyPawn* Pawn = FindArriettyPawn()) Pawn->ToggleFlight(); }
