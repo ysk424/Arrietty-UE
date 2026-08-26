@@ -76,10 +76,10 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 - UE Automation: 4テスト成功（FTMS、CSC、制御コマンド、走行規則）
 - NullRHIゲーム起動: `ArriettyGameMode`と`ArriettyWorld`マップのロード成功
 - Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み
-- T2、HMD、右コントローラーを組み合わせた実機受入試験: 未実施
+- T2、HMD、右コントローラーを組み合わせた実機走行: 起動、正面整合、直進、Esc終了を確認済み（2026-08-27）
 
 実機試験は[`docs/ACCEPTANCE_TEST.md`](docs/ACCEPTANCE_TEST.md)に沿って行います。
 
 ## ライセンス
 
-GPL-3.0-or-later
+[MIT License](LICENSE)

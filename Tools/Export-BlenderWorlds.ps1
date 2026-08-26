@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 ysk424
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 
 param(
     [string]$Blender = "C:\Users\azoo\git\build_windows_Release_x64_vc17_Release\bin\blender.exe",
