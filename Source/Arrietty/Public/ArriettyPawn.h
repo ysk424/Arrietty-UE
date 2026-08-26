@@ -132,6 +132,7 @@ private:
     bool bWorldUsesRideSurfaces = false;
     bool bTrainerSignalReceived = false;
     bool bSteeringCalibrated = false;
+    double SteeringCalibrationReadyAtSeconds = 0.0;
     bool bInstrumentAnchorCalibrated = false;
     FQuat SteeringBaseline = FQuat::Identity;
     double FilteredSteeringDegrees = 0.0;

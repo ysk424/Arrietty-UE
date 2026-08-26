@@ -238,8 +238,18 @@ void AArriettyPawn::RecenterHmdToBike()
     // unwanted angular offset between them.
     GEngine->XRSystem->ResetOrientation(0.0f);
     bSteeringCalibrated = false;
+    FilteredSteeringDegrees = 0.0;
+    Snapshot.RawSteeringDegrees = 0.0;
+    Snapshot.EffectiveSteeringDegrees = 0.0;
+
+    // ResetOrientation is applied by OpenXR on a following frame.  Capturing
+    // the controller pose immediately can therefore mix the old controller
+    // space with the new HMD space and look like a permanent 90-degree handle
+    // turn.  Wait for the tracking space to settle before taking the new
+    // straight-ahead steering reference.
+    SteeringCalibrationReadyAtSeconds = FPlatformTime::Seconds() + 0.75;
     ResetInstrumentAnchor();
-    Snapshot.Message = TEXT("HMD forward aligned to bike forward; keep looking straight while alignment settles");
+    Snapshot.Message = TEXT("HMD aligned; keep the handle centered while OpenXR steering settles");
 }
 
 bool AArriettyPawn::TryStartVrSession()
@@ -615,9 +625,9 @@ void AArriettyPawn::UpdateSteering()
         return;
     }
     const bool bTracked = RightController && RightController->IsTracked();
-    Snapshot.bSteeringTracking = bTracked;
     if (!bTracked)
     {
+        Snapshot.bSteeringTracking = false;
         Snapshot.RawSteeringDegrees = 0.0;
         Snapshot.EffectiveSteeringDegrees = 0.0;
         if (Snapshot.Status == EArriettyRideStatus::Riding)
@@ -626,6 +636,20 @@ void AArriettyPawn::UpdateSteering()
         }
         return;
     }
+
+    if (FPlatformTime::Seconds() < SteeringCalibrationReadyAtSeconds)
+    {
+        Snapshot.bSteeringTracking = false;
+        Snapshot.RawSteeringDegrees = 0.0;
+        Snapshot.EffectiveSteeringDegrees = 0.0;
+        if (Snapshot.Status == EArriettyRideStatus::Riding)
+        {
+            Snapshot.Message = TEXT("Ride paused; aligning HMD and centered handle");
+        }
+        return;
+    }
+
+    Snapshot.bSteeringTracking = true;
 
     // Steering is measured in tracking-space. A world-space rotation would feed
     // the bicycle's own turn back into the controller angle on the next frame.
