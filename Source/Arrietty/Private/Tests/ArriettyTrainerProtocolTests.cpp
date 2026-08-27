@@ -122,6 +122,12 @@ bool FArriettyRideMathTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Steering deadzone/gain"), FMath::IsNearlyEqual(
         ArriettyTrainerProtocol::EffectiveSteeringDegrees(20.0), 9.25));
     TestEqual(TEXT("Steering clamp"), ArriettyTrainerProtocol::EffectiveSteeringDegrees(60.0), 15.0);
+    TestEqual(TEXT("Unreal +X is ride heading 0"),
+        ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(FVector2D(1.0, 0.0)), 0.0);
+    TestEqual(TEXT("Unreal +Y is ride heading -90"),
+        ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(FVector2D(0.0, 1.0)), -90.0);
+    TestTrue(TEXT("Unreal X=Y is ride heading -45"), FMath::IsNearlyEqual(
+        ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(FVector2D(1.0, 1.0)), -45.0));
     return true;
 }
 

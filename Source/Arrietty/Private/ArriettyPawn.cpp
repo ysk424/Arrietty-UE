@@ -280,23 +280,35 @@ void AArriettyPawn::RecenterHmdToBike()
         return;
     }
 
-    // Recenter the tracking-space yaw instead of rotating the Pawn. Rotating
-    // the Pawn would rotate both the bike and HMD together and preserve the
-    // unwanted angular offset between them.
-    GEngine->XRSystem->ResetOrientation(0.0f);
+    const FVector HmdWorldForward3D = Camera->GetForwardVector().GetSafeNormal2D();
+    const FVector2D HmdWorldForward(HmdWorldForward3D.X, HmdWorldForward3D.Y);
+    if (HmdWorldForward.IsNearlyZero())
+    {
+        Snapshot.Message = TEXT("HMD alignment failed: look near the horizon and try again");
+        return;
+    }
+
+    // Make the bicycle, its dashboard, and ride motion use the exact horizontal
+    // direction the rider is looking at. Preserve VROrigin in world space while
+    // rotating the Pawn so the rider's view and the road do not rotate during
+    // calibration. This avoids relying on runtime-specific OpenXR recentering.
+    const FTransform VrOriginWorldBeforeAlignment = VrOrigin->GetComponentTransform();
+    Snapshot.HeadingDegrees =
+        ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(HmdWorldForward);
+    StartHeadingDegrees = Snapshot.HeadingDegrees;
+    UpdateWorldTransform(false);
+    VrOrigin->SetWorldTransform(VrOriginWorldBeforeAlignment);
+
     bSteeringCalibrated = false;
     FilteredSteeringDegrees = 0.0;
     Snapshot.RawSteeringDegrees = 0.0;
     Snapshot.EffectiveSteeringDegrees = 0.0;
 
-    // ResetOrientation is applied by OpenXR on a following frame.  Capturing
-    // the controller pose immediately can therefore mix the old controller
-    // space with the new HMD space and look like a permanent 90-degree handle
-    // turn.  Wait for the tracking space to settle before taking the new
-    // straight-ahead steering reference.
+    // Give the rider time to keep the real handle centered before capturing a
+    // new tracking-space steering reference.
     SteeringCalibrationReadyAtSeconds = FPlatformTime::Seconds() + 0.75;
     ResetInstrumentAnchor();
-    Snapshot.Message = TEXT("HMD aligned; keep the handle centered while OpenXR steering settles");
+    Snapshot.Message = TEXT("Bike, dashboard, and motion aligned to HMD forward; keep the handle centered");
 }
 
 bool AArriettyPawn::TryStartVrSession()

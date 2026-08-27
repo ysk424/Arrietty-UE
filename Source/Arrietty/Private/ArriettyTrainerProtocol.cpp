@@ -232,3 +232,16 @@ double ArriettyTrainerProtocol::EffectiveSteeringDegrees(double FilteredRawDegre
     const double Effective = FMath::Sign(FilteredRawDegrees) * Magnitude * Arrietty::SteeringGain;
     return FMath::Clamp(Effective, -Arrietty::MaxEffectiveSteeringDegrees, Arrietty::MaxEffectiveSteeringDegrees);
 }
+
+double ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(
+    const FVector2D& WorldForward)
+{
+    if (WorldForward.IsNearlyZero())
+    {
+        return 0.0;
+    }
+    // Arrietty simulation Y becomes Unreal -Y in ArriettyToWorld, so an
+    // Unreal world yaw has the opposite sign from ride HeadingDegrees.
+    return FMath::UnwindDegrees(-FMath::RadiansToDegrees(
+        FMath::Atan2(WorldForward.Y, WorldForward.X)));
+}
