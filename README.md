@@ -57,7 +57,7 @@ cd C:\Users\azoo\git\Arrietty-UE
 - ホイールベース1.05 m、ゲイン50%、デッドゾーン1.5°、上限±15°
 - 速度10 km/h超の1 km/hにつき高度1 mとなる飛行モード
 - `SecretWorldRideSurface`タグを持つActorまたはComponentだけを走行面として使う下向きレイキャスト
-- テンキー`0`後の右OpenXRグリップ位置をステム基準にするWorld Space VR計器。追跡中は平滑追従し、追跡喪失時は最後の位置を保持
+- テンキー`0`後の右OpenXRグリップ位置をステム基準にする54×30cmの不透明World Space VR計器。表示面はHMDへ向き、追跡中は平滑追従し、追跡喪失時は最後の位置を保持
 - 速度、心拍、時刻、ケイデンス、パワー、距離、周回、高度、モード、XY、P番号、FPS、走行状態の表示
 - BLEエラー、操舵追跡喪失、コース端、飛行切替を短時間だけHMD前方へ表示
 - 固定名`Saved/arrietty_ride.csv`への上書きログ

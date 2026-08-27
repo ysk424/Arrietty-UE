@@ -12,6 +12,7 @@
 
 class UCameraComponent;
 class UArriettyAlertWidget;
+class UArriettyInstrumentWidget;
 class UMotionControllerComponent;
 class USceneComponent;
 class UWidgetComponent;
@@ -116,6 +117,12 @@ private:
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UWidgetComponent> AlertComponent;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UArriettyInstrumentWidget> InstrumentWidget;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UArriettyAlertWidget> AlertWidget;
 
     TUniquePtr<FArriettyBluetoothManager> Bluetooth;
     TUniquePtr<FArriettyRideLog> RideLog;

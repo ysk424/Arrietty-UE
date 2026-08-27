@@ -53,13 +53,18 @@ void UArriettyInstrumentWidget::NativeConstruct()
         return;
     }
 
-    UBorder* Bezel = WidgetTree->ConstructWidget<UBorder>();
-    Bezel->SetBrushColor(FLinearColor(0.005f, 0.012f, 0.008f, 0.88f));
-    Bezel->SetPadding(FMargin(18.0f, 12.0f));
-    WidgetTree->RootWidget = Bezel;
+    UBorder* OuterBezel = WidgetTree->ConstructWidget<UBorder>();
+    OuterBezel->SetBrushColor(InstrumentGreen);
+    OuterBezel->SetPadding(FMargin(7.0f));
+    WidgetTree->RootWidget = OuterBezel;
+
+    UBorder* Screen = WidgetTree->ConstructWidget<UBorder>();
+    Screen->SetBrushColor(FLinearColor(0.002f, 0.006f, 0.003f, 1.0f));
+    Screen->SetPadding(FMargin(18.0f, 12.0f));
+    OuterBezel->SetContent(Screen);
 
     UVerticalBox* Root = WidgetTree->ConstructWidget<UVerticalBox>();
-    Bezel->SetContent(Root);
+    Screen->SetContent(Root);
 
     UHorizontalBox* SpeedRow = WidgetTree->ConstructWidget<UHorizontalBox>();
     Root->AddChildToVerticalBox(SpeedRow);

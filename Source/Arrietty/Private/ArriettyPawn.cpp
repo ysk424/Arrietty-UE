@@ -9,6 +9,7 @@
 #include "ArriettyRideLog.h"
 #include "ArriettyTrainerProtocol.h"
 #include "Async/Async.h"
+#include "Blueprint/UserWidget.h"
 #include "Camera/CameraComponent.h"
 #include "Components/InputComponent.h"
 #include "MotionControllerComponent.h"
@@ -61,7 +62,11 @@ AArriettyPawn::AArriettyPawn()
     InstrumentComponent->SetRedrawTime(0.10f);
     InstrumentComponent->SetPivot(FVector2D(0.5, 0.5));
     InstrumentComponent->SetTwoSided(true);
-    InstrumentComponent->SetBlendMode(EWidgetBlendMode::Transparent);
+    InstrumentComponent->SetBlendMode(EWidgetBlendMode::Opaque);
+    InstrumentComponent->SetTickWhenOffscreen(true);
+    InstrumentComponent->SetManuallyRedraw(false);
+    InstrumentComponent->SetDrawAtDesiredSize(false);
+    InstrumentComponent->SetWindowFocusable(false);
     InstrumentComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     InstrumentComponent->SetVisibility(false);
 
@@ -74,7 +79,9 @@ AArriettyPawn::AArriettyPawn()
     AlertComponent->SetRelativeRotation(FRotator(0.0, 180.0, 0.0));
     AlertComponent->SetRelativeScale3D(FVector(0.05));
     AlertComponent->SetTwoSided(true);
-    AlertComponent->SetBlendMode(EWidgetBlendMode::Transparent);
+    AlertComponent->SetBlendMode(EWidgetBlendMode::Opaque);
+    AlertComponent->SetTickWhenOffscreen(true);
+    AlertComponent->SetWindowFocusable(false);
     AlertComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     AlertComponent->SetVisibility(false);
 
@@ -90,10 +97,17 @@ void AArriettyPawn::BeginPlay()
     Super::BeginPlay();
     Bluetooth = MakeUnique<FArriettyBluetoothManager>();
     RideLog = MakeUnique<FArriettyRideLog>();
-    InstrumentComponent->SetWidgetClass(UArriettyInstrumentWidget::StaticClass());
-    InstrumentComponent->InitWidget();
-    AlertComponent->SetWidgetClass(UArriettyAlertWidget::StaticClass());
-    AlertComponent->InitWidget();
+    InstrumentWidget = CreateWidget<UArriettyInstrumentWidget>(
+        GetWorld(), UArriettyInstrumentWidget::StaticClass(), TEXT("ArriettyInstrumentWidget"));
+    AlertWidget = CreateWidget<UArriettyAlertWidget>(
+        GetWorld(), UArriettyAlertWidget::StaticClass(), TEXT("ArriettyAlertWidget"));
+    InstrumentComponent->SetWidget(InstrumentWidget);
+    AlertComponent->SetWidget(AlertWidget);
+    if (!InstrumentWidget)
+    {
+        InstrumentAnchorStatus = TEXT("ERROR - Instrument widget creation failed");
+        UE_LOG(LogArriettyRide, Error, TEXT("VR instrument widget creation failed"));
+    }
     RefreshRideSurfaceMode();
     UpdateWorldTransform(false);
     InstrumentComponent->SetVisibility(false);
@@ -326,7 +340,9 @@ void AArriettyPawn::ActivateVrSession()
     bVrSessionActive = true;
     bInstrumentVisible = true;
     ResetInstrumentAnchor();
-    InstrumentComponent->SetVisibility(true);
+    InstrumentComponent->SetHiddenInGame(false);
+    InstrumentComponent->SetVisibility(true, true);
+    InstrumentComponent->Activate(true);
     UpdateWorldTransform(false);
     CalibrateEyeHeight();
     GetWorldTimerManager().SetTimerForNextTick(this, &AArriettyPawn::CalibrateEyeHeight);
@@ -461,7 +477,8 @@ void AArriettyPawn::ToggleFlight()
 void AArriettyPawn::ToggleInstrumentPanel()
 {
     bInstrumentVisible = !bInstrumentVisible;
-    InstrumentComponent->SetVisibility(bInstrumentVisible);
+    InstrumentComponent->SetHiddenInGame(!bInstrumentVisible);
+    InstrumentComponent->SetVisibility(bInstrumentVisible, true);
     if (bInstrumentVisible)
     {
         ResetInstrumentAnchor();
@@ -926,6 +943,11 @@ void AArriettyPawn::CalibrateEyeHeight()
 
 void AArriettyPawn::ResetInstrumentAnchor()
 {
+    if (!InstrumentWidget)
+    {
+        InstrumentAnchorStatus = TEXT("ERROR - Instrument widget creation failed");
+        return;
+    }
     bInstrumentAnchorCalibrated = false;
     InstrumentAnchorLocalCentimeters = FVector(68.0, 0.0, 102.0);
     InstrumentAnchorStatus = TEXT("VIRTUAL STEM - Press Numpad 0 while facing forward to anchor at the stem tracker");
@@ -935,6 +957,11 @@ void AArriettyPawn::UpdateInstrumentAnchor()
 {
     if (!bInstrumentVisible || !InstrumentComponent)
     {
+        return;
+    }
+    if (!InstrumentWidget)
+    {
+        InstrumentAnchorStatus = TEXT("ERROR - Instrument widget creation failed");
         return;
     }
     const bool bTrackerReady = RightController && RightController->IsTracked();
@@ -959,7 +986,16 @@ void AArriettyPawn::UpdateInstrumentAnchor()
                 DeltaSeconds,
                 8.0f);
         }
-        InstrumentAnchorStatus = TEXT("LIVE RIGHT OPENXR GRIP - Panel follows the stem tracker position");
+        const FVector TrackerMeters = TrackerLocalCentimeters / 100.0;
+        const double HmdDistanceMeters = Camera
+            ? FVector::Distance(Camera->GetComponentLocation(), RightController->GetComponentLocation()) / 100.0
+            : 0.0;
+        InstrumentAnchorStatus = FString::Printf(
+            TEXT("LIVE STEM X %.2f Y %.2f Z %.2f m | HMD %.2f m | OPAQUE 54x30 cm"),
+            TrackerMeters.X,
+            TrackerMeters.Y,
+            TrackerMeters.Z,
+            HmdDistanceMeters);
     }
     else if (bInstrumentAnchorCalibrated)
     {
@@ -978,11 +1014,22 @@ void AArriettyPawn::UpdateInstrumentAnchor()
     Location.Y += PanelSideOffsetMeters * 100.0;
     Location.Z += PanelHeightOffsetMeters * 100.0;
     InstrumentComponent->SetRelativeLocation(Location);
-    // Position follows the physical stem tracker.  Facing remains tied to the
-    // bicycle forward established by Numpad 0 so steering cannot turn the
-    // display edge-on to the rider.
-    InstrumentComponent->SetRelativeRotation(FRotator(-24.0, 180.0, 0.0));
-    const float PixelScale = static_cast<float>(0.04 * PanelScale);
+    // A WidgetComponent has a directional front face. Point that face directly
+    // from the physical stem position toward the HMD instead of relying on a
+    // fixed pitch whose back face can disappear in a stereo render.
+    if (Camera)
+    {
+        const FVector TowardHmd = Camera->GetComponentLocation() - InstrumentComponent->GetComponentLocation();
+        if (!TowardHmd.IsNearlyZero())
+        {
+            FRotator FacingRotation = TowardHmd.Rotation();
+            FacingRotation.Roll = 0.0;
+            InstrumentComponent->SetWorldRotation(FacingRotation);
+        }
+    }
+    // 900 x 500 pixels at 0.06 cm/pixel is 54 x 30 cm at scale 1.0.
+    // This intentionally starts large so it cannot be mistaken for a speck in VR.
+    const float PixelScale = static_cast<float>(0.06 * PanelScale);
     InstrumentComponent->SetRelativeScale3D(FVector(PixelScale));
 }
 
@@ -992,9 +1039,9 @@ void AArriettyPawn::UpdateInstrumentWidget()
     {
         return;
     }
-    if (UArriettyInstrumentWidget* Widget = Cast<UArriettyInstrumentWidget>(InstrumentComponent->GetWidget()))
+    if (InstrumentWidget)
     {
-        Widget->SetRideSnapshot(Snapshot);
+        InstrumentWidget->SetRideSnapshot(Snapshot);
     }
 }
 
@@ -1004,10 +1051,9 @@ void AArriettyPawn::ShowVrAlert(const FString& Message, double DurationSeconds)
     {
         return;
     }
-    if (UArriettyAlertWidget* Widget =
-        Cast<UArriettyAlertWidget>(AlertComponent->GetWidget()))
+    if (AlertWidget)
     {
-        Widget->SetAlert(Message);
+        AlertWidget->SetAlert(Message);
         AlertComponent->SetVisibility(true);
         AlertVisibleUntilSeconds = FPlatformTime::Seconds() + FMath::Max(0.5, DurationSeconds);
     }

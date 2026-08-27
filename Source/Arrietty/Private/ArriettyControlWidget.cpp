@@ -146,6 +146,7 @@ void UArriettyControlWidget::NativeConstruct()
     UButton* InstrumentButton = AddButton(Root, TEXT("Show Panel Preview"), InstrumentButtonLabel);
     InstrumentButton->OnClicked.AddDynamic(this, &UArriettyControlWidget::OnToggleInstrument);
     InstrumentStatusText = AddText(Root, TEXT("Anchor: HIDDEN"), 12, FLinearColor(0.75f, 0.8f, 0.85f));
+    InstrumentStatusText->SetAutoWrapText(true);
     USpinBox* Forward = AddSetting(Root, TEXT("Forward (m)"), 0.0, -0.5, 0.5);
     USpinBox* Side = AddSetting(Root, TEXT("Side (m)"), 0.0, -0.5, 0.5);
     USpinBox* Height = AddSetting(Root, TEXT("Height (m)"), 0.10, -0.5, 0.5);

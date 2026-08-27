@@ -16,7 +16,7 @@ void UArriettyAlertWidget::NativeConstruct()
     }
 
     UBorder* Background = WidgetTree->ConstructWidget<UBorder>();
-    Background->SetBrushColor(FLinearColor(0.08f, 0.0f, 0.0f, 0.88f));
+    Background->SetBrushColor(FLinearColor(0.08f, 0.0f, 0.0f, 1.0f));
     Background->SetPadding(FMargin(18.0f, 10.0f));
     WidgetTree->RootWidget = Background;
 
