@@ -5,6 +5,7 @@ param(
     [string]$PackageRoot = "$PSScriptRoot\..\Dist\Windows",
     [switch]$UseHmd,
     [switch]$RecenterHmd,
+    [switch]$StartRide,
     [switch]$ShowVrAlert,
     [ValidateRange(1, 60)]
     [int]$DurationSeconds = 5
@@ -46,6 +47,13 @@ try {
     if ($RecenterHmd) {
         [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0100, [IntPtr]0x6E, [IntPtr]0) | Out-Null
         [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0101, [IntPtr]0x6E, [IntPtr]0) | Out-Null
+        Start-Sleep -Seconds 2
+    }
+
+    if ($StartRide) {
+        # Numpad 0 recenters the HMD and arms the live stem-tracker anchor.
+        [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0100, [IntPtr]0x60, [IntPtr]0) | Out-Null
+        [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0101, [IntPtr]0x60, [IntPtr]0) | Out-Null
         Start-Sleep -Seconds 2
     }
 

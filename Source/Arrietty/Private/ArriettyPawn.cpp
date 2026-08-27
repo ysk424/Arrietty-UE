@@ -928,7 +928,7 @@ void AArriettyPawn::ResetInstrumentAnchor()
 {
     bInstrumentAnchorCalibrated = false;
     InstrumentAnchorLocalCentimeters = FVector(68.0, 0.0, 102.0);
-    InstrumentAnchorStatus = TEXT("VIRTUAL STEM - Waiting to calibrate the right controller position");
+    InstrumentAnchorStatus = TEXT("VIRTUAL STEM - Press Numpad 0 while facing forward to anchor at the stem tracker");
 }
 
 void AArriettyPawn::UpdateInstrumentAnchor()
@@ -937,18 +937,50 @@ void AArriettyPawn::UpdateInstrumentAnchor()
     {
         return;
     }
-    if (!bInstrumentAnchorCalibrated && RightController && RightController->IsTracked())
+    const bool bTrackerReady = RightController && RightController->IsTracked();
+    const bool bAlignmentSettled =
+        IsRideActive() && FPlatformTime::Seconds() >= SteeringCalibrationReadyAtSeconds;
+    if (bTrackerReady && bAlignmentSettled)
     {
-        InstrumentAnchorLocalCentimeters = GetActorTransform().InverseTransformPosition(
+        const FVector TrackerLocalCentimeters = GetActorTransform().InverseTransformPosition(
             RightController->GetComponentLocation());
-        bInstrumentAnchorCalibrated = true;
-        InstrumentAnchorStatus = TEXT("CALIBRATED RIGHT OPENXR GRIP - Controller position captured once; tracking jitter is ignored");
+        if (!bInstrumentAnchorCalibrated)
+        {
+            InstrumentAnchorLocalCentimeters = TrackerLocalCentimeters;
+            bInstrumentAnchorCalibrated = true;
+            ShowVrAlert(TEXT("INSTRUMENT ANCHORED\nSTEM TRACKER"), 2.0);
+        }
+        else
+        {
+            const float DeltaSeconds = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
+            InstrumentAnchorLocalCentimeters = FMath::VInterpTo(
+                InstrumentAnchorLocalCentimeters,
+                TrackerLocalCentimeters,
+                DeltaSeconds,
+                8.0f);
+        }
+        InstrumentAnchorStatus = TEXT("LIVE RIGHT OPENXR GRIP - Panel follows the stem tracker position");
+    }
+    else if (bInstrumentAnchorCalibrated)
+    {
+        InstrumentAnchorStatus = TEXT("LAST STEM POSITION - Tracker unavailable; panel position is held");
+    }
+    else if (IsRideActive() && !bAlignmentSettled)
+    {
+        InstrumentAnchorStatus = TEXT("ALIGNING - Keep the HMD forward and the handle centered");
+    }
+    else if (IsRideActive())
+    {
+        InstrumentAnchorStatus = TEXT("WAITING - Right OpenXR grip tracker is not available");
     }
     FVector Location = InstrumentAnchorLocalCentimeters;
     Location.X += PanelForwardOffsetMeters * 100.0;
     Location.Y += PanelSideOffsetMeters * 100.0;
     Location.Z += PanelHeightOffsetMeters * 100.0;
     InstrumentComponent->SetRelativeLocation(Location);
+    // Position follows the physical stem tracker.  Facing remains tied to the
+    // bicycle forward established by Numpad 0 so steering cannot turn the
+    // display edge-on to the rider.
     InstrumentComponent->SetRelativeRotation(FRotator(-24.0, 180.0, 0.0));
     const float PixelScale = static_cast<float>(0.04 * PanelScale);
     InstrumentComponent->SetRelativeScale3D(FVector(PixelScale));
