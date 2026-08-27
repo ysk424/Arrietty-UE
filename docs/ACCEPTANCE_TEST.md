@@ -7,10 +7,11 @@
 - SteamVR/OpenXRランタイムを最新版にする。
 - HTC VIVE HMD、右コントローラー`LHR-9EFF8645`、CYCPLUS T2を起動する。心拍試験では標準BLE Heart Rate Service対応センサーも広告状態にする。
 - Windows Bluetoothで他のトレーニングアプリがT2を使用していないことを確認する。
+- `Arrietty.uproject`を開き、`ArriettyDemo` Levelを選び、Play方式を`VR Preview`にする。
 
 ## 試験
 
-1. Arrietty起動時に両眼表示が自動開始する。`Back to Real World`でデスクトップ表示へ戻り、`Dive into Secret World`で再開する。
+1. VR Preview開始時に両眼表示が自動開始する。`Back to Real World`でデスクトップ表示へ戻り、`Dive into Secret World`で再開する。
 2. テンキー8/2がHMD正面、4/6が保存済み進行方向を動かす。
 3. HMDで正面を向き、ハンドル中央でテンキー0を押し、そのまま1秒保つ。HMD/BikeのUE Forwardが一致し、T2制御が`FLAT P5`になって開始音が鳴る。直進時のRaw/Applied操舵角が0°付近で、Heading 0°ならUE +Xへ直進する。
 4. 20 km/hで1秒走り、仮想距離が約5.56 m増える。
@@ -24,7 +25,7 @@
 12. P1〜P7を切り替え、成功応答後だけ表示P番号が変わる。
 13. `Back to Real World`後、`Saved\arrietty_ride.csv`最終行が`BACK_TO_REAL_WORLD`である。
 14. 10分走行し、画面の平均FPSが59.5以上で、VIVEの通常90 Hz動作ではSteamVR再投影が常態化せず、重大なhitchやクラッシュがない。
-15. `Esc`または`Exit Arrietty`で、T2接続を停止してプロセスが正常終了する。
+15. `Esc`または`Exit Arrietty`でT2接続が停止する。VR PreviewではPlayが終了してEditorへ戻り、パッケージ版ではプロセスが正常終了する。
 16. 方向がずれた場合は正面を向いてテンキー`.`を押し、表示Offsetが0°付近へ戻る。
 
 ## 現在の環境上の注意

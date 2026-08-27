@@ -15,7 +15,7 @@ class USkyLightComponent;
 class UStaticMeshComponent;
 
 UCLASS()
-class ARRIETTY_API AArriettyWorldBuilder : public AActor
+class ARRIETTYRUNTIME_API AArriettyWorldBuilder : public AActor
 {
     GENERATED_BODY()
 

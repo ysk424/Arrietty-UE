@@ -14,7 +14,7 @@ class UTextBlock;
 class UVerticalBox;
 
 UCLASS()
-class ARRIETTY_API UArriettyControlWidget : public UUserWidget
+class ARRIETTYRUNTIME_API UArriettyControlWidget : public UUserWidget
 {
     GENERATED_BODY()
 

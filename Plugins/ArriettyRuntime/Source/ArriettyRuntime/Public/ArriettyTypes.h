@@ -7,7 +7,7 @@
 
 namespace Arrietty
 {
-inline constexpr TCHAR Version[] = TEXT("0.7.9");
+inline constexpr TCHAR Version[] = TEXT("0.8.0");
 inline constexpr TCHAR RightControllerSerial[] = TEXT("LHR-9EFF8645");
 inline constexpr TCHAR RideSurfaceTag[] = TEXT("SecretWorldRideSurface");
 inline constexpr double EyeHeightMeters = 1.5;

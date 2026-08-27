@@ -1,6 +1,6 @@
 # Arrietty
 
-Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定した右VIVEコントローラーを使い、Unreal Engine内の世界を走行・飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。
+Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定した右VIVEコントローラーを使い、Unreal EngineのLevel内を走行・飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.8.0です。
 
 ## 確認済み開発環境
 
@@ -24,17 +24,41 @@ cd C:\Users\azoo\git\Arrietty-UE
 .\Tools\Package-Arrietty.ps1
 ```
 
-その後、`Arrietty.uproject`または生成された`Arrietty.sln`を開きます。エディターのPlayで起動できます。パッケージ版は`Dist\Windows\Arrietty.exe`です。
+その後、`Arrietty.uproject`または生成された`Arrietty.sln`を開きます。`Content/Worlds/ArriettyDemo/ArriettyDemo`を開き、Playメニューを一度`VR Preview`に設定してPlayします。日常の世界制作と走行にパッケージは不要です。`Dist\Windows\Arrietty.exe`は性能確認や配布確認が必要な場合だけ作ります。
+
+## 世界プロジェクトを作る
+
+ArriettyのC++、BLE、OpenXR、Pawn、計器は`Plugins/ArriettyRuntime`に分離されています。世界は別のUEプロジェクトとして作成できます。
+
+```powershell
+cd C:\Users\azoo\git\Arrietty-UE
+pwsh -File .\Tools\New-ArriettyWorldProject.ps1 -Name MyForest
+```
+
+既定では`C:\Users\azoo\Documents\Unreal Projects\MyForest\MyForest.uproject`が作成され、VS2026のEditorビルドまで実行されます。`.uproject`を開いて既存Levelを編集するか、新しいLevelを`Content/Worlds`へ作成します。
+
+走行開始位置には`ArriettyCourseStart`を置き、Actorの赤いX軸を進行方向へ向けます。地上走行させる道路にはActor TagまたはComponent Tagとして`SecretWorldRideSurface`を付け、Visibility Collisionを有効にします。詳しくは[`docs/WORLD_PROJECTS.md`](docs/WORLD_PROJECTS.md)を参照してください。
+
+## 世界プロジェクトのC++を更新する
+
+最初にこのリポジトリを`git pull`し、UE Editorを閉じてから実行します。
+
+```powershell
+pwsh -File .\Tools\Update-ArriettyWorldProject.ps1 `
+  -Project "C:\Users\azoo\Documents\Unreal Projects\MyForest\MyForest.uproject"
+```
+
+更新対象は世界プロジェクト内の`Plugins/ArriettyRuntime`だけです。世界の`Content`とプロジェクト固有の`Config`は変更せず、更新後にVS2026プロジェクトを再生成してEditorターゲットを再ビルドします。DLLを手作業でコピーする必要はありません。
 
 ## 操作
 
-1. SteamVRを起動し、SteamVRをアクティブなOpenXRランタイムにします。
+1. SteamVRを起動し、SteamVRをアクティブなOpenXRランタイムにします。UE Editorでは走行するLevelを開き、Playメニューから`VR Preview`を選びます。
 2. HMDと右VIVEコントローラーを接続します。心拍計を使う場合は、標準BLE Heart Rate Service対応センサーも装着して広告状態にします。
 3. Arriettyを起動するとOpenXR VRが自動的に開始します。開始しない場合は、画面のVR状態を確認して`Dive into Secret World`を押します。
 4. テンキー`4`/`6`で開始方向、`8`/`2`で開始位置を合わせます。
 5. T2を数回漕いで起こします。
 6. HMDで自転車の正面を向き、ハンドルを中央に保ってテンキー`0`または`Start Ride`を押します。この時点のHMD正面を自転車正面として再センターします。OpenXR座標が安定してから操舵中央を記録するため、押した後も約1秒はハンドルを中央に保ちます。
-7. 開始音の後に走行します。VRから戻る操作は`Back to Real World`、アプリ終了は`Esc`または`Exit Arrietty`です。
+7. 開始音の後に走行します。VRから戻る操作は`Back to Real World`です。`VR Preview`では`Esc`または`Exit Arrietty`でPlayを終了してUE Editorへ戻ります。パッケージ版ではArriettyのプロセスを終了します。
 
 キー割り当ては従来版と同じです。
 
@@ -45,7 +69,7 @@ cd C:\Users\azoo\git\Arrietty-UE
 - `Numpad 1` / `3` / `5` / `9`: P1 / P2 / P3 / P4
 - `Numpad +` / `-`: P5〜P7を含む抵抗プリセットの上下移動
 - `Numpad .`: 現在向いているHMD方向を自転車正面として再調整
-- `Esc`: ログとT2接続を終了してArriettyを閉じる
+- `Esc`: ログとT2接続を終了する。VR PreviewではEditorへ戻り、パッケージ版ではArriettyを閉じる
 
 ## 維持した機能
 
@@ -70,7 +94,7 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 
 ## Blender世界の移行
 
-既存`.blend`をランタイムで直接開くことはできません。`Tools/Export-BlenderWorlds.ps1`でGLBへ一括変換し、Unreal Editorでインポートします。詳しくは[`docs/WORLD_MIGRATION.md`](docs/WORLD_MIGRATION.md)を参照してください。リポジトリの標準起動では、約2.6 kmの軽量オーバル、湖、集落、5個の飛行リングをC++から生成するため、外部アセットなしでも動作確認できます。
+既存`.blend`をランタイムで直接開くことはできません。`Tools/Export-BlenderWorlds.ps1`でGLBへ一括変換し、Unreal Editorでインポートします。詳しくは[`docs/WORLD_MIGRATION.md`](docs/WORLD_MIGRATION.md)を参照してください。`ArriettyDemo` Levelには`ArriettyWorldBuilder`を明示配置し、約2.6 kmの軽量オーバル、湖、集落、5個の飛行リングをC++から生成します。他のLevelにはデモ世界を生成しません。
 
 ## 検証状態
 
@@ -78,11 +102,14 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 - Win64 Development Game / Shipping: ビルド成功
 - Visual Studio 2026ソリューション: 生成成功（ToolsVersion 18.0）
 - UE Automation: 6テスト成功（心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
-- NullRHIゲーム起動: `ArriettyGameMode`と`ArriettyWorld`マップのロード成功
+- NullRHIゲーム起動: `ArriettyRuntime`、`ArriettyGameMode`、`ArriettyDemo` Levelのロード成功
+- 別名の世界プロジェクト生成、Runtime更新、VS2026 Editorビルド: 成功
 - Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み
 - T2、HMD、右コントローラーを組み合わせた実機走行: 起動、正面整合、直進、Esc終了を確認済み（2026-08-27）
 
 実機試験は[`docs/ACCEPTANCE_TEST.md`](docs/ACCEPTANCE_TEST.md)に沿って行います。
+
+ESP32、6個の押しボタン、2軸ジョイスティックを使う自転車操作盤の設計案は[`docs/HARDWARE_CONTROLS.md`](docs/HARDWARE_CONTROLS.md)、次回の再開地点は[`docs/NEXT_SESSION.md`](docs/NEXT_SESSION.md)に記録しています。
 
 ## ライセンス
 

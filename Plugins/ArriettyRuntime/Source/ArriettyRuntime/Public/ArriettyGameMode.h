@@ -10,12 +10,13 @@
 class UArriettyControlWidget;
 
 UCLASS()
-class ARRIETTY_API AArriettyGameMode : public AGameModeBase
+class ARRIETTYRUNTIME_API AArriettyGameMode : public AGameModeBase
 {
     GENERATED_BODY()
 
 public:
     AArriettyGameMode();
+    virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
     virtual void StartPlay() override;
 
 private:

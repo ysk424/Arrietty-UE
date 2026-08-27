@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class Arrietty : ModuleRules
+public class ArriettyRuntime : ModuleRules
 {
-    public Arrietty(ReadOnlyTargetRules Target) : base(Target)
+    public ArriettyRuntime(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         CppStandard = CppStandardVersion.Cpp20;

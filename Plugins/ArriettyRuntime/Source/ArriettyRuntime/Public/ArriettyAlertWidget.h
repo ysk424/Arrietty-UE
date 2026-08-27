@@ -10,7 +10,7 @@
 class UTextBlock;
 
 UCLASS()
-class ARRIETTY_API UArriettyAlertWidget : public UUserWidget
+class ARRIETTYRUNTIME_API UArriettyAlertWidget : public UUserWidget
 {
     GENERATED_BODY()
 

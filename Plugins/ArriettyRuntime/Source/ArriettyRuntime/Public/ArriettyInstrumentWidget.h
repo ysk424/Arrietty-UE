@@ -12,7 +12,7 @@ class UTextBlock;
 class UProgressBar;
 
 UCLASS()
-class ARRIETTY_API UArriettyInstrumentWidget : public UUserWidget
+class ARRIETTYRUNTIME_API UArriettyInstrumentWidget : public UUserWidget
 {
     GENERATED_BODY()
 

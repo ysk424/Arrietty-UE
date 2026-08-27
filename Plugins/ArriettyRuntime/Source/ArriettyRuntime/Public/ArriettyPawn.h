@@ -17,7 +17,7 @@ class UMotionControllerComponent;
 class USceneComponent;
 class UWidgetComponent;
 UCLASS()
-class ARRIETTY_API AArriettyPawn : public APawn
+class ARRIETTYRUNTIME_API AArriettyPawn : public APawn
 {
     GENERATED_BODY()
 
@@ -128,7 +128,7 @@ private:
     TUniquePtr<FArriettyRideLog> RideLog;
     FArriettyRideSnapshot Snapshot;
 
-    FVector2D StartPositionMeters = FVector2D(0.0, -320.0);
+    FVector2D StartPositionMeters = FVector2D::ZeroVector;
     double StartHeadingDegrees = 0.0;
     double MoveStepMeters = Arrietty::DefaultMoveStepMeters;
     double TurnStepDegrees = Arrietty::DefaultTurnStepDegrees;

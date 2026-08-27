@@ -11,7 +11,7 @@ cd C:\Users\azoo\git\Arrietty-UE
 
 ## Unrealへのインポート
 
-Unreal Editorでプロジェクトを開き、Output Logから次を実行できます。
+対象となる世界の`.uproject`をUnreal Editorで開き、Content BrowserへGLBをドラッグします。Arrietty開発プロジェクトへ一括インポートする場合は、Output Logから次も実行できます。
 
 ```text
 py "C:/Users/azoo/git/Arrietty-UE/Tools/import_worlds.py"
@@ -22,6 +22,8 @@ py "C:/Users/azoo/git/Arrietty-UE/Tools/import_worlds.py"
 ## 走行面
 
 道路や滑走路のActor TagまたはComponent Tagへ`SecretWorldRideSurface`を追加します。タグ付き面が1つでもある世界では、タグのない面を地面として使いません。次のXY位置にタグ付き面がなければ移動を一時停止します。
+
+走行面はVisibilityチャンネルのレイキャストに応答するCollision設定にします。Levelへ`ArriettyCourseStart`を1個置き、開始地点へ移動して赤いX軸を最初の進行方向へ向けます。Level固有のGameMode Overrideを設定している場合は解除するか、`ArriettyGameMode`を指定します。
 
 ## 60 FPS向け確認
 

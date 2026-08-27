@@ -13,6 +13,6 @@ public class ArriettyEditorTarget : TargetRules
         WindowsPlatform.CompilerVersion = "Latest";
         WindowsPlatform.bUseCPPWinRT = true;
         WindowsPlatform.WindowsSdkVersion = "10.0.26100.0";
-        ExtraModuleNames.Add("Arrietty");
+        ExtraModuleNames.Add("ArriettyWorldHost");
     }
 }

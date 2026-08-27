@@ -103,6 +103,19 @@ AArriettyPawn::~AArriettyPawn() = default;
 void AArriettyPawn::BeginPlay()
 {
     Super::BeginPlay();
+    const FVector InitialWorldLocation = GetActorLocation();
+    StartPositionMeters = FVector2D(
+        InitialWorldLocation.X / 100.0,
+        -InitialWorldLocation.Y / 100.0);
+    const FVector InitialWorldForward = GetActorForwardVector().GetSafeNormal2D();
+    StartHeadingDegrees = InitialWorldForward.IsNearlyZero()
+        ? 0.0
+        : ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(
+            FVector2D(InitialWorldForward.X, InitialWorldForward.Y));
+    Snapshot.PositionMeters = StartPositionMeters;
+    Snapshot.HeadingDegrees = StartHeadingDegrees;
+    GroundHeightMeters = InitialWorldLocation.Z / 100.0;
+
     Bluetooth = MakeUnique<FArriettyBluetoothManager>();
     RideLog = MakeUnique<FArriettyRideLog>();
     InstrumentWidget = CreateWidget<UArriettyInstrumentWidget>(

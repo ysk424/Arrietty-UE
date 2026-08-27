@@ -1,0 +1,25 @@
+{
+  "FileVersion": 3,
+  "Version": 800,
+  "VersionName": "0.8.0",
+  "FriendlyName": "Arrietty Runtime",
+  "Description": "Ride Unreal Engine Levels with OpenXR and a CYCPLUS T2 trainer.",
+  "Category": "Virtual Reality",
+  "CreatedBy": "ysk424",
+  "CanContainContent": false,
+  "IsBetaVersion": false,
+  "Installed": false,
+  "Modules": [
+    {
+      "Name": "ArriettyRuntime",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "OpenXR",
+      "Enabled": true
+    }
+  ]
+}
