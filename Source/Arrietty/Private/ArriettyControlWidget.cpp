@@ -290,9 +290,10 @@ void UArriettyControlWidget::Refresh()
     FlightButtonLabel->SetText(FText::FromString(
         State.bFlightEnabled ? TEXT("Return to Ground (Numpad 7)") : TEXT("Enable Flight (Numpad 7)")));
     FlightStatusText->SetText(FText::FromString(FString::Printf(
-        TEXT("Mode: %s   Altitude %.1f m   XY: RIDE SURFACE"),
+        TEXT("Mode: %s   Altitude %.1f m   XY: %s"),
         State.bFlightEnabled ? TEXT("FLIGHT") : TEXT("GROUND"),
-        State.AltitudeMeters)));
+        State.AltitudeMeters,
+        State.bFlightEnabled ? TEXT("FREE") : TEXT("RIDE SURFACE"))));
     InstrumentButtonLabel->SetText(FText::FromString(
         Pawn->IsInstrumentVisible() ? TEXT("Hide Panel") : TEXT("Show Panel Preview")));
     InstrumentStatusText->SetText(FText::FromString(FString::Printf(

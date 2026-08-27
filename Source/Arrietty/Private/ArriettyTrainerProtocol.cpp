@@ -216,6 +216,11 @@ double ArriettyTrainerProtocol::AltitudeForSpeed(double SpeedKmh)
     return FMath::Max(0.0, SpeedKmh - Arrietty::TakeoffSpeedKmh);
 }
 
+bool ArriettyTrainerProtocol::RequiresRideSurface(bool bFlightEnabled)
+{
+    return !bFlightEnabled;
+}
+
 int32 ArriettyTrainerProtocol::CompletedLaps(double DistanceMeters, double LapLengthMeters)
 {
     return FMath::Max(0, FMath::FloorToInt(DistanceMeters / FMath::Max(1.0, LapLengthMeters)));

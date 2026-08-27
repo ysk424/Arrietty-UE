@@ -146,11 +146,10 @@ private:
     bool bTrainerSignalReceived = false;
     bool bSteeringCalibrated = false;
     double SteeringCalibrationReadyAtSeconds = 0.0;
-    bool bInstrumentAnchorCalibrated = false;
     bool bControllerTrackingLossAlerted = false;
     FQuat SteeringBaseline = FQuat::Identity;
     double FilteredSteeringDegrees = 0.0;
-    FVector InstrumentAnchorLocalCentimeters = FVector(68.0, 0.0, 102.0);
+    FVector InstrumentAnchorLocalCentimeters = FVector(75.0, 0.0, 100.0);
     FString InstrumentAnchorStatus = TEXT("HIDDEN - Instrument panel is hidden");
     double AlertVisibleUntilSeconds = 0.0;
 

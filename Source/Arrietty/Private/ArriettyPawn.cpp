@@ -61,7 +61,7 @@ AArriettyPawn::AArriettyPawn()
     InstrumentComponent->SetDrawSize(FVector2D(900.0, 500.0));
     InstrumentComponent->SetRedrawTime(0.10f);
     InstrumentComponent->SetPivot(FVector2D(0.5, 0.5));
-    InstrumentComponent->SetTwoSided(true);
+    InstrumentComponent->SetTwoSided(false);
     InstrumentComponent->SetBlendMode(EWidgetBlendMode::Opaque);
     InstrumentComponent->SetTickWhenOffscreen(true);
     InstrumentComponent->SetManuallyRedraw(false);
@@ -460,17 +460,28 @@ void AArriettyPawn::ToggleFlight()
         ShowVrAlert(TEXT("START RIDE BEFORE FLIGHT"));
         return;
     }
-    Snapshot.bFlightEnabled = !Snapshot.bFlightEnabled;
-    if (!Snapshot.bFlightEnabled)
+    if (Snapshot.bFlightEnabled)
     {
+        double LandingGroundHeight = GroundHeightMeters;
+        if (bWorldUsesRideSurfaces &&
+            !ResolveRideSurfaceHeight(Snapshot.PositionMeters, LandingGroundHeight))
+        {
+            Snapshot.Message = TEXT("Landing blocked; return above the course before ground mode");
+            ShowVrAlert(TEXT("LANDING REQUIRES COURSE\nFLIGHT MODE CONTINUES"), 3.5);
+            return;
+        }
+        GroundHeightMeters = LandingGroundHeight;
+        Snapshot.bFlightEnabled = false;
         Snapshot.AltitudeMeters = 0.0;
+        Snapshot.Message = TEXT("Ground mode enabled");
+        ShowVrAlert(TEXT("GROUND MODE"), 2.5);
     }
-    Snapshot.Message = Snapshot.bFlightEnabled
-        ? TEXT("Flight enabled; altitude follows speed and XY remains on the ride surface")
-        : TEXT("Ground mode enabled");
-    ShowVrAlert(Snapshot.bFlightEnabled
-        ? TEXT("FLIGHT MODE\nCOURSE SURFACE STILL REQUIRED")
-        : TEXT("GROUND MODE"), 2.5);
+    else
+    {
+        Snapshot.bFlightEnabled = true;
+        Snapshot.Message = TEXT("Flight enabled; altitude follows speed and XY can leave the course");
+        ShowVrAlert(TEXT("FLIGHT MODE\nFREE HORIZONTAL MOVEMENT"), 2.5);
+    }
     UpdateWorldTransform(false);
 }
 
@@ -822,7 +833,10 @@ void AArriettyPawn::AdvanceRide(float DeltaSeconds)
         FMath::Cos(MidpointHeading), FMath::Sin(MidpointHeading)) * AdvanceMeters;
 
     double NextGroundHeight = GroundHeightMeters;
-    if (bWorldUsesRideSurfaces && !ResolveRideSurfaceHeight(NextPosition, NextGroundHeight))
+    const bool bHasNextRideSurface =
+        !bWorldUsesRideSurfaces || ResolveRideSurfaceHeight(NextPosition, NextGroundHeight);
+    if (!bHasNextRideSurface &&
+        ArriettyTrainerProtocol::RequiresRideSurface(Snapshot.bFlightEnabled))
     {
         const bool bFirstCourseEdgeFrame =
             !Snapshot.Message.StartsWith(TEXT("Ride paused; no ride surface"));
@@ -838,7 +852,10 @@ void AArriettyPawn::AdvanceRide(float DeltaSeconds)
     {
         Snapshot.Message = TEXT("Ride surface recovered; steering is active");
     }
-    GroundHeightMeters = NextGroundHeight;
+    if (bHasNextRideSurface)
+    {
+        GroundHeightMeters = NextGroundHeight;
+    }
     Snapshot.PositionMeters = NextPosition;
     Snapshot.DistanceMeters += AdvanceMeters;
     Snapshot.HeadingDegrees = FMath::UnwindDegrees(
@@ -948,9 +965,8 @@ void AArriettyPawn::ResetInstrumentAnchor()
         InstrumentAnchorStatus = TEXT("ERROR - Instrument widget creation failed");
         return;
     }
-    bInstrumentAnchorCalibrated = false;
-    InstrumentAnchorLocalCentimeters = FVector(68.0, 0.0, 102.0);
-    InstrumentAnchorStatus = TEXT("VIRTUAL STEM - Press Numpad 0 while facing forward to anchor at the stem tracker");
+    InstrumentAnchorLocalCentimeters = FVector(75.0, 0.0, 100.0);
+    InstrumentAnchorStatus = TEXT("FIXED VIRTUAL BIKE - Forward 0.75 m, panel center height 1.10 m");
 }
 
 void AArriettyPawn::UpdateInstrumentAnchor()
@@ -964,68 +980,24 @@ void AArriettyPawn::UpdateInstrumentAnchor()
         InstrumentAnchorStatus = TEXT("ERROR - Instrument widget creation failed");
         return;
     }
-    const bool bTrackerReady = RightController && RightController->IsTracked();
-    const bool bAlignmentSettled =
-        IsRideActive() && FPlatformTime::Seconds() >= SteeringCalibrationReadyAtSeconds;
-    if (bTrackerReady && bAlignmentSettled)
-    {
-        const FVector TrackerLocalCentimeters = GetActorTransform().InverseTransformPosition(
-            RightController->GetComponentLocation());
-        if (!bInstrumentAnchorCalibrated)
-        {
-            InstrumentAnchorLocalCentimeters = TrackerLocalCentimeters;
-            bInstrumentAnchorCalibrated = true;
-            ShowVrAlert(TEXT("INSTRUMENT ANCHORED\nSTEM TRACKER"), 2.0);
-        }
-        else
-        {
-            const float DeltaSeconds = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
-            InstrumentAnchorLocalCentimeters = FMath::VInterpTo(
-                InstrumentAnchorLocalCentimeters,
-                TrackerLocalCentimeters,
-                DeltaSeconds,
-                8.0f);
-        }
-        const FVector TrackerMeters = TrackerLocalCentimeters / 100.0;
-        const double HmdDistanceMeters = Camera
-            ? FVector::Distance(Camera->GetComponentLocation(), RightController->GetComponentLocation()) / 100.0
-            : 0.0;
-        InstrumentAnchorStatus = FString::Printf(
-            TEXT("LIVE STEM X %.2f Y %.2f Z %.2f m | HMD %.2f m | OPAQUE 54x30 cm"),
-            TrackerMeters.X,
-            TrackerMeters.Y,
-            TrackerMeters.Z,
-            HmdDistanceMeters);
-    }
-    else if (bInstrumentAnchorCalibrated)
-    {
-        InstrumentAnchorStatus = TEXT("LAST STEM POSITION - Tracker unavailable; panel position is held");
-    }
-    else if (IsRideActive() && !bAlignmentSettled)
-    {
-        InstrumentAnchorStatus = TEXT("ALIGNING - Keep the HMD forward and the handle centered");
-    }
-    else if (IsRideActive())
-    {
-        InstrumentAnchorStatus = TEXT("WAITING - Right OpenXR grip tracker is not available");
-    }
     FVector Location = InstrumentAnchorLocalCentimeters;
     Location.X += PanelForwardOffsetMeters * 100.0;
     Location.Y += PanelSideOffsetMeters * 100.0;
     Location.Z += PanelHeightOffsetMeters * 100.0;
     InstrumentComponent->SetRelativeLocation(Location);
-    // A WidgetComponent has a directional front face. Point that face directly
-    // from the physical stem position toward the HMD instead of relying on a
-    // fixed pitch whose back face can disappear in a stereo render.
-    if (Camera)
+    // The panel belongs to the virtual bicycle, like a car dashboard. Its
+    // front points toward the nominal rider eye position and never follows
+    // head yaw, so looking right moves the panel left in the view naturally.
+    const FVector NominalEyeLocalCentimeters(
+        0.0,
+        0.0,
+        Arrietty::EyeHeightMeters * 100.0);
+    const FVector TowardRider = NominalEyeLocalCentimeters - Location;
+    if (!TowardRider.IsNearlyZero())
     {
-        const FVector TowardHmd = Camera->GetComponentLocation() - InstrumentComponent->GetComponentLocation();
-        if (!TowardHmd.IsNearlyZero())
-        {
-            FRotator FacingRotation = TowardHmd.Rotation();
-            FacingRotation.Roll = 0.0;
-            InstrumentComponent->SetWorldRotation(FacingRotation);
-        }
+        FRotator FacingRotation = TowardRider.Rotation();
+        FacingRotation.Roll = 0.0;
+        InstrumentComponent->SetRelativeRotation(FacingRotation);
     }
     // 900 x 500 pixels at 0.06 cm/pixel is 54 x 30 cm at scale 1.0.
     // This intentionally starts large so it cannot be mistaken for a speck in VR.

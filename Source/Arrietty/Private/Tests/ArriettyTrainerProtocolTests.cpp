@@ -116,6 +116,8 @@ bool FArriettyRideMathTest::RunTest(const FString& Parameters)
         101.751, 100.8, 15.0, 80.0, true, 100.0, 1.0), 0.0);
     TestEqual(TEXT("20 km/h flight altitude"), ArriettyTrainerProtocol::AltitudeForSpeed(20.0), 10.0);
     TestEqual(TEXT("Below takeoff is ground"), ArriettyTrainerProtocol::AltitudeForSpeed(10.0), 0.0);
+    TestTrue(TEXT("Ground mode requires ride surface"), ArriettyTrainerProtocol::RequiresRideSurface(false));
+    TestFalse(TEXT("Flight mode can leave ride surface"), ArriettyTrainerProtocol::RequiresRideSurface(true));
     TestEqual(TEXT("Four completed laps"), ArriettyTrainerProtocol::CompletedLaps(572.0, 143.0), 4);
     TestTrue(TEXT("Steering deadzone/gain"), FMath::IsNearlyEqual(
         ArriettyTrainerProtocol::EffectiveSteeringDegrees(20.0), 9.25));

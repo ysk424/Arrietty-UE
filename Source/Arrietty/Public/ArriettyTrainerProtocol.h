@@ -26,6 +26,7 @@ double EffectiveSpeedKmh(
     double LastWheelMotionSeconds,
     double WheelPeriodSeconds);
 double AltitudeForSpeed(double SpeedKmh);
+bool RequiresRideSurface(bool bFlightEnabled);
 int32 CompletedLaps(double DistanceMeters, double LapLengthMeters);
 double EffectiveSteeringDegrees(double FilteredRawDegrees);
 }
