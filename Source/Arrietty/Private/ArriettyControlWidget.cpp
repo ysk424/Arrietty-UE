@@ -272,8 +272,16 @@ void UArriettyControlWidget::Refresh()
     RideMessageText->SetText(FText::FromString(State.Message));
     ControlStatusText->SetText(FText::FromString(FString::Printf(
         TEXT("T2 Control: %s\n%s"), *State.ControlStatus, *State.ControlMessage)));
+    const FString HeartRate = State.HeartRateBpm.IsSet()
+        ? FString::Printf(TEXT("%u bpm"), State.HeartRateBpm.GetValue())
+        : TEXT("-- bpm");
     TelemetryText->SetText(FText::FromString(FString::Printf(
-        TEXT("%.2f km/h   %.0f rpm   %d W"), State.SpeedKmh, State.CadenceRpm, State.PowerWatts)));
+        TEXT("%.2f km/h   %.0f rpm   %d W   HR %s\nHeart sensor: %s"),
+        State.SpeedKmh,
+        State.CadenceRpm,
+        State.PowerWatts,
+        *HeartRate,
+        *State.HeartRateStatus)));
     DistanceText->SetText(FText::FromString(FString::Printf(
         TEXT("Distance %.1f m   Laps completed %d"), State.DistanceMeters, State.LapsCompleted)));
     LogText->SetText(FText::FromString(FString::Printf(
@@ -281,7 +289,9 @@ void UArriettyControlWidget::Refresh()
     FlightButtonLabel->SetText(FText::FromString(
         State.bFlightEnabled ? TEXT("Return to Ground (Numpad 7)") : TEXT("Enable Flight (Numpad 7)")));
     FlightStatusText->SetText(FText::FromString(FString::Printf(
-        TEXT("Mode: %s   Altitude %.1f m"), State.bFlightEnabled ? TEXT("FLIGHT") : TEXT("GROUND"), State.AltitudeMeters)));
+        TEXT("Mode: %s   Altitude %.1f m   XY: RIDE SURFACE"),
+        State.bFlightEnabled ? TEXT("FLIGHT") : TEXT("GROUND"),
+        State.AltitudeMeters)));
     InstrumentButtonLabel->SetText(FText::FromString(
         Pawn->IsInstrumentVisible() ? TEXT("Hide Panel") : TEXT("Show Panel Preview")));
     InstrumentStatusText->SetText(FText::FromString(FString::Printf(

@@ -20,6 +20,7 @@ inline constexpr double SteeringGain = 0.50;
 inline constexpr double SteeringDeadzoneDegrees = 1.5;
 inline constexpr double MaxEffectiveSteeringDegrees = 15.0;
 inline constexpr double SampleStaleSeconds = 1.25;
+inline constexpr double HeartRateStaleSeconds = 5.0;
 inline constexpr double CoastStopSpeedKmh = 5.0;
 inline constexpr double DefaultWheelStopSeconds = 1.5;
 inline constexpr double MinWheelStopSeconds = 0.75;
@@ -69,6 +70,8 @@ struct FArriettyRideSnapshot
     double FtmsSpeedKmh = 0.0;
     double CadenceRpm = 0.0;
     int32 PowerWatts = 0;
+    TOptional<uint16> HeartRateBpm;
+    FString HeartRateStatus = TEXT("NOT CONNECTED");
     double DistanceMeters = 0.0;
     double AltitudeMeters = 0.0;
     int32 LapsCompleted = 0;

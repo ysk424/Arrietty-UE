@@ -25,7 +25,7 @@ bool FArriettyRideLog::Start()
         return false;
     }
     StartedAtSeconds = FPlatformTime::Seconds();
-    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,power_w,distance_m,laps_completed,flight_mode,altitude_m,target_altitude_m,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset\r\n"));
+    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,power_w,heart_rate_bpm,distance_m,laps_completed,flight_mode,altitude_m,target_altitude_m,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset\r\n"));
     FArriettyRideSnapshot Empty;
     Record(TEXT("START"), Empty, 0.0, {}, {}, false, false);
     return true;
@@ -48,12 +48,15 @@ void FArriettyRideLog::Record(
     const FString WheelRevs = WheelRevolutions.IsSet() ? FString::Printf(TEXT("%u"), WheelRevolutions.GetValue()) : FString();
     const FString WheelTicks = WheelEventTicks.IsSet() ? FString::Printf(TEXT("%u"), WheelEventTicks.GetValue()) : FString();
     const FString Preset = Snapshot.AppliedPreset.IsSet() ? FString::Printf(TEXT("%d"), Snapshot.AppliedPreset.GetValue()) : FString();
+    const FString HeartRate = Snapshot.HeartRateBpm.IsSet()
+        ? FString::Printf(TEXT("%u"), Snapshot.HeartRateBpm.GetValue())
+        : FString();
     const double EyeZ = Snapshot.AltitudeMeters + Arrietty::EyeHeightMeters;
     const double TargetAltitude = Snapshot.bFlightEnabled
         ? FMath::Max(0.0, Snapshot.SpeedKmh - Arrietty::TakeoffSpeedKmh)
         : 0.0;
     WriteUtf8(FString::Printf(
-        TEXT("%s,%.3f,%s,%.2f,%.2f,%.1f,%d,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s,%s,%d,%d,%s,%s\r\n"),
+        TEXT("%s,%.3f,%s,%.2f,%.2f,%.1f,%d,%s,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s,%s,%d,%d,%s,%s\r\n"),
         *Timestamp,
         FPlatformTime::Seconds() - StartedAtSeconds,
         Event,
@@ -61,6 +64,7 @@ void FArriettyRideLog::Record(
         FtmsSpeedKmh,
         Snapshot.CadenceRpm,
         Snapshot.PowerWatts,
+        *HeartRate,
         Snapshot.DistanceMeters,
         Snapshot.LapsCompleted,
         Snapshot.bFlightEnabled ? 1 : 0,

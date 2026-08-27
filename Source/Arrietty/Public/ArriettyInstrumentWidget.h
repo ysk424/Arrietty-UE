@@ -9,6 +9,7 @@
 #include "ArriettyInstrumentWidget.generated.h"
 
 class UTextBlock;
+class UProgressBar;
 
 UCLASS()
 class ARRIETTY_API UArriettyInstrumentWidget : public UUserWidget
@@ -27,6 +28,9 @@ private:
     TObjectPtr<UTextBlock> HeartRateText;
 
     UPROPERTY()
+    TObjectPtr<UProgressBar> HeartRateBar;
+
+    UPROPERTY()
     TObjectPtr<UTextBlock> ClockText;
 
     UPROPERTY()
@@ -34,6 +38,9 @@ private:
 
     UPROPERTY()
     TObjectPtr<UTextBlock> PositionText;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> StatusText;
 
     double LastUpdateSeconds = 0.0;
 };

@@ -5,6 +5,7 @@ param(
     [string]$PackageRoot = "$PSScriptRoot\..\Dist\Windows",
     [switch]$UseHmd,
     [switch]$RecenterHmd,
+    [switch]$ShowVrAlert,
     [ValidateRange(1, 60)]
     [int]$DurationSeconds = 5
 )
@@ -45,6 +46,13 @@ try {
     if ($RecenterHmd) {
         [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0100, [IntPtr]0x6E, [IntPtr]0) | Out-Null
         [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0101, [IntPtr]0x6E, [IntPtr]0) | Out-Null
+        Start-Sleep -Seconds 2
+    }
+
+    if ($ShowVrAlert) {
+        # Numpad 7 before a ride exercises the temporary HMD alert widget.
+        [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0100, [IntPtr]0x67, [IntPtr]0) | Out-Null
+        [ArriettyWinMessage]::PostMessage($target.MainWindowHandle, 0x0101, [IntPtr]0x67, [IntPtr]0) | Out-Null
         Start-Sleep -Seconds 2
     }
 

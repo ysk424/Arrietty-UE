@@ -108,6 +108,26 @@ bool ArriettyTrainerProtocol::ParseCscMeasurement(
     return true;
 }
 
+TOptional<uint16> ArriettyTrainerProtocol::ParseHeartRateMeasurement(
+    TArrayView<const uint8> Data)
+{
+    if (Data.Num() < 2)
+    {
+        return {};
+    }
+    const bool bSixteenBitValue = (Data[0] & 0x01) != 0;
+    if (!bSixteenBitValue)
+    {
+        return static_cast<uint16>(Data[1]);
+    }
+    if (Data.Num() < 3)
+    {
+        return {};
+    }
+    return static_cast<uint16>(Data[1]) |
+        (static_cast<uint16>(Data[2]) << 8);
+}
+
 TArray<uint8> ArriettyTrainerProtocol::BuildFlatRoadControlCommand(int32 PresetIndex)
 {
     const FArriettyControlPreset* Preset = FindPreset(PresetIndex);

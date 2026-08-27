@@ -14,6 +14,9 @@ enum class EArriettyBluetoothEventType : uint8
     Connected,
     TrainerSample,
     CscSample,
+    HeartRateConnected,
+    HeartRateSample,
+    HeartRateUnavailable,
     ControlReady,
     CscUnavailable,
     Error,
@@ -28,6 +31,7 @@ struct FArriettyBluetoothEvent
     FString Message;
     FArriettyTrainerSample TrainerSample;
     FArriettyCscSample CscSample;
+    uint16 HeartRateBpm = 0;
     int32 PresetIndex = 0;
     double ReceivedAtSeconds = 0.0;
 };

@@ -4,8 +4,11 @@
 #include "ArriettyInstrumentWidget.h"
 
 #include "Blueprint/WidgetTree.h"
+#include "Components/Border.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/ProgressBar.h"
+#include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -16,6 +19,7 @@ namespace
 {
 const FLinearColor InstrumentGreen(0.04f, 1.0f, 0.12f, 1.0f);
 const FLinearColor InstrumentOrange(1.0f, 0.25f, 0.01f, 1.0f);
+const FLinearColor InstrumentRed(1.0f, 0.04f, 0.08f, 1.0f);
 
 UTextBlock* MakeInstrumentText(
     UWidgetTree* Tree,
@@ -49,8 +53,13 @@ void UArriettyInstrumentWidget::NativeConstruct()
         return;
     }
 
+    UBorder* Bezel = WidgetTree->ConstructWidget<UBorder>();
+    Bezel->SetBrushColor(FLinearColor(0.005f, 0.012f, 0.008f, 0.88f));
+    Bezel->SetPadding(FMargin(18.0f, 12.0f));
+    WidgetTree->RootWidget = Bezel;
+
     UVerticalBox* Root = WidgetTree->ConstructWidget<UVerticalBox>();
-    WidgetTree->RootWidget = Root;
+    Bezel->SetContent(Root);
 
     UHorizontalBox* SpeedRow = WidgetTree->ConstructWidget<UHorizontalBox>();
     Root->AddChildToVerticalBox(SpeedRow);
@@ -71,7 +80,7 @@ void UArriettyInstrumentWidget::NativeConstruct()
 
     UHorizontalBox* SensorRow = WidgetTree->ConstructWidget<UHorizontalBox>();
     Root->AddChildToVerticalBox(SensorRow);
-    HeartRateText = MakeInstrumentText(WidgetTree, SensorRow, TEXT("HR  -- bpm"), 35, InstrumentOrange);
+    HeartRateText = MakeInstrumentText(WidgetTree, SensorRow, TEXT("HR  --- bpm"), 35, InstrumentOrange);
     ClockText = MakeInstrumentText(WidgetTree, SensorRow, TEXT("00:00:00"), 35, InstrumentOrange, ETextJustify::Right);
     if (UHorizontalBoxSlot* HeartSlot = Cast<UHorizontalBoxSlot>(HeartRateText->Slot))
     {
@@ -82,6 +91,14 @@ void UArriettyInstrumentWidget::NativeConstruct()
         TimeSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     }
 
+    USizeBox* HeartRateBarSize = WidgetTree->ConstructWidget<USizeBox>();
+    HeartRateBarSize->SetHeightOverride(12.0f);
+    Root->AddChildToVerticalBox(HeartRateBarSize);
+    HeartRateBar = WidgetTree->ConstructWidget<UProgressBar>();
+    HeartRateBar->SetPercent(0.0f);
+    HeartRateBar->SetFillColorAndOpacity(InstrumentRed);
+    HeartRateBarSize->SetContent(HeartRateBar);
+
     RideDataText = MakeInstrumentText(
         WidgetTree,
         Root,
@@ -90,6 +107,9 @@ void UArriettyInstrumentWidget::NativeConstruct()
         InstrumentGreen);
     PositionText = MakeInstrumentText(
         WidgetTree, Root, TEXT("X +0.0   Y +0.0 m"), 25, InstrumentGreen);
+    StatusText = MakeInstrumentText(
+        WidgetTree, Root, TEXT("SYSTEM READY"), 22, InstrumentOrange, ETextJustify::Center);
+    StatusText->SetAutoWrapText(true);
 }
 
 void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Snapshot)
@@ -101,7 +121,20 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     }
     LastUpdateSeconds = Now;
     SpeedText->SetText(FText::FromString(FString::Printf(TEXT("%4.1f"), Snapshot.SpeedKmh)));
-    HeartRateText->SetText(FText::FromString(TEXT("HR  -- bpm")));
+    if (Snapshot.HeartRateBpm.IsSet())
+    {
+        const uint16 HeartRate = Snapshot.HeartRateBpm.GetValue();
+        HeartRateText->SetText(FText::FromString(FString::Printf(TEXT("HR  %3u bpm"), HeartRate)));
+        HeartRateText->SetColorAndOpacity(FSlateColor(
+            HeartRate >= 170 ? InstrumentRed : InstrumentOrange));
+        HeartRateBar->SetPercent(FMath::Clamp((static_cast<float>(HeartRate) - 40.0f) / 160.0f, 0.0f, 1.0f));
+    }
+    else
+    {
+        HeartRateText->SetText(FText::FromString(TEXT("HR  --- bpm")));
+        HeartRateText->SetColorAndOpacity(FSlateColor(InstrumentOrange));
+        HeartRateBar->SetPercent(0.0f);
+    }
     ClockText->SetText(FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S"))));
     const FString Distance = Snapshot.DistanceMeters < 1000.0
         ? FString::Printf(TEXT("%5.0f m"), Snapshot.DistanceMeters)
@@ -110,14 +143,19 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
         ? Snapshot.AppliedPreset.GetValue()
         : Snapshot.SelectedPreset;
     RideDataText->SetText(FText::FromString(FString::Printf(
-        TEXT("CAD %3.0f rpm    PWR %4d W\nDIST %s  LAP %4d\nALT %5.1f m   %s P%d"),
+        TEXT("CAD %3.0f rpm    PWR %4d W\nDIST %s  LAP %4d\nALT %5.1f m   %s P%d   FPS %4.1f"),
         Snapshot.CadenceRpm,
         Snapshot.PowerWatts,
         *Distance,
         Snapshot.LapsCompleted,
         Snapshot.AltitudeMeters,
         Snapshot.bFlightEnabled ? TEXT("FLIGHT") : TEXT("GROUND"),
-        Preset)));
+        Preset,
+        Snapshot.AverageFps)));
     PositionText->SetText(FText::FromString(FString::Printf(
         TEXT("X %+.1f   Y %+.1f m"), Snapshot.PositionMeters.X, Snapshot.PositionMeters.Y)));
+    StatusText->SetText(FText::FromString(Snapshot.Message));
+    const bool bWarning = Snapshot.Status == EArriettyRideStatus::Error ||
+        Snapshot.Message.StartsWith(TEXT("Ride paused;"));
+    StatusText->SetColorAndOpacity(FSlateColor(bWarning ? InstrumentRed : InstrumentOrange));
 }

@@ -44,6 +44,29 @@ bool FArriettyCscParseTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FArriettyHeartRateParseTest,
+    "Arrietty.Sensors.Heart Rate Measurement",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FArriettyHeartRateParseTest::RunTest(const FString& Parameters)
+{
+    const TArray<uint8> EightBit = {0x00, 72};
+    const TArray<uint8> SixteenBit = {0x01, 0x2c, 0x01};
+    const TArray<uint8> TruncatedSixteenBit = {0x01, 0x2c};
+    TestEqual(TEXT("UINT8 heart rate"),
+        ArriettyTrainerProtocol::ParseHeartRateMeasurement(EightBit).Get(0),
+        static_cast<uint16>(72));
+    TestEqual(TEXT("UINT16 heart rate"),
+        ArriettyTrainerProtocol::ParseHeartRateMeasurement(SixteenBit).Get(0),
+        static_cast<uint16>(300));
+    TestFalse(TEXT("Truncated UINT16 is rejected"),
+        ArriettyTrainerProtocol::ParseHeartRateMeasurement(TruncatedSixteenBit).IsSet());
+    TestFalse(TEXT("Empty measurement is rejected"),
+        ArriettyTrainerProtocol::ParseHeartRateMeasurement({}).IsSet());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FArriettyControlCommandsTest,
     "Arrietty.Trainer.Flat Road Control",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

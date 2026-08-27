@@ -29,7 +29,7 @@ cd C:\Users\azoo\git\Arrietty-UE
 ## 操作
 
 1. SteamVRを起動し、SteamVRをアクティブなOpenXRランタイムにします。
-2. HMDと右VIVEコントローラーを接続します。
+2. HMDと右VIVEコントローラーを接続します。心拍計を使う場合は、標準BLE Heart Rate Service対応センサーも装着して広告状態にします。
 3. Arriettyを起動するとOpenXR VRが自動的に開始します。開始しない場合は、画面のVR状態を確認して`Dive into Secret World`を押します。
 4. テンキー`4`/`6`で開始方向、`8`/`2`で開始位置を合わせます。
 5. T2を数回漕いで起こします。
@@ -50,15 +50,19 @@ cd C:\Users\azoo\git\Arrietty-UE
 ## 維持した機能
 
 - T2のFTMS Indoor Bike Data通知による速度・ケイデンス・パワー
+- 標準BLE Heart Rate Service `0x180D`／Heart Rate Measurement `0x2A37`による心拍数。見つからない場合もT2走行は継続
 - FTMS Control Pointの制御権取得、勾配0%、風速0、Cw 0.51 kg/m、P1〜P7のCrr
 - CSC実円盤停止判定、ケイデンス0かつ5 km/h以下の惰性停止
 - 右OpenXRグリップの最初の姿勢を操舵中央として校正
 - ホイールベース1.05 m、ゲイン50%、デッドゾーン1.5°、上限±15°
 - 速度10 km/h超の1 km/hにつき高度1 mとなる飛行モード
 - `SecretWorldRideSurface`タグを持つActorまたはComponentだけを走行面として使う下向きレイキャスト
-- 緑・オレンジの透明背景VR計器、右コントローラー位置の一度だけの校正
-- 速度、時刻、ケイデンス、パワー、距離、周回、高度、モード、XY、P番号の表示
+- 自転車のステム付近に固定したWorld Space VR計器、右コントローラー位置の一度だけの校正
+- 速度、心拍、時刻、ケイデンス、パワー、距離、周回、高度、モード、XY、P番号、FPS、走行状態の表示
+- BLEエラー、操舵追跡喪失、コース端、飛行切替を短時間だけHMD前方へ表示
 - 固定名`Saved/arrietty_ride.csv`への上書きログ
+
+飛行モードは従来版と同じく`Numpad 7`で切り替え、10 km/hを超えた速度1 km/hにつき1 m上昇します。水平移動は地上・飛行とも`SecretWorldRideSurface`上に制限されます。コース端で停止するのはUnreal Engineの制限ではなく、Arriettyが従来版から維持している走行規則です。
 
 ## 60 FPS設計
 
@@ -73,7 +77,7 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 - UE 5.8.2 Editor: ビルド成功
 - Win64 Development Game / Shipping: ビルド成功
 - Visual Studio 2026ソリューション: 生成成功（ToolsVersion 18.0）
-- UE Automation: 4テスト成功（FTMS、CSC、制御コマンド、走行規則）
+- UE Automation: 5テスト成功（心拍、FTMS、CSC、制御コマンド、走行規則）
 - NullRHIゲーム起動: `ArriettyGameMode`と`ArriettyWorld`マップのロード成功
 - Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み
 - T2、HMD、右コントローラーを組み合わせた実機走行: 起動、正面整合、直進、Esc終了を確認済み（2026-08-27）

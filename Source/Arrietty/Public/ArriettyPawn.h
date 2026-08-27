@@ -11,6 +11,7 @@
 #include "ArriettyPawn.generated.h"
 
 class UCameraComponent;
+class UArriettyAlertWidget;
 class UMotionControllerComponent;
 class USceneComponent;
 class UWidgetComponent;
@@ -90,6 +91,8 @@ private:
     void ResetInstrumentAnchor();
     void UpdateInstrumentAnchor();
     void UpdateInstrumentWidget();
+    void ShowVrAlert(const FString& Message, double DurationSeconds = 3.0);
+    void UpdateVrAlert();
     void PlayStartSound();
     void RecordTelemetry(const TCHAR* Event = TEXT("SAMPLE"));
     bool IsWheelStopped(double NowSeconds) const;
@@ -110,6 +113,9 @@ private:
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UWidgetComponent> InstrumentComponent;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UWidgetComponent> AlertComponent;
 
     TUniquePtr<FArriettyBluetoothManager> Bluetooth;
     TUniquePtr<FArriettyRideLog> RideLog;
@@ -134,13 +140,16 @@ private:
     bool bSteeringCalibrated = false;
     double SteeringCalibrationReadyAtSeconds = 0.0;
     bool bInstrumentAnchorCalibrated = false;
+    bool bControllerTrackingLossAlerted = false;
     FQuat SteeringBaseline = FQuat::Identity;
     double FilteredSteeringDegrees = 0.0;
     FVector InstrumentAnchorLocalCentimeters = FVector(68.0, 0.0, 102.0);
     FString InstrumentAnchorStatus = TEXT("HIDDEN - Instrument panel is hidden");
+    double AlertVisibleUntilSeconds = 0.0;
 
     double FtmsSpeedKmh = 0.0;
     double LastFtmsSampleSeconds = 0.0;
+    double LastHeartRateSampleSeconds = 0.0;
     bool bWheelSignalReceived = false;
     TOptional<uint32> WheelRevolutions;
     TOptional<uint16> WheelEventTimeTicks;

@@ -12,6 +12,7 @@ const TArray<FArriettyControlPreset>& Presets();
 const FArriettyControlPreset* FindPreset(int32 PresetIndex);
 bool ParseIndoorBikeData(TArrayView<const uint8> Data, FArriettyTrainerSample& OutSample);
 bool ParseCscMeasurement(TArrayView<const uint8> Data, FArriettyCscSample& OutSample);
+TOptional<uint16> ParseHeartRateMeasurement(TArrayView<const uint8> Data);
 TArray<uint8> BuildFlatRoadControlCommand(int32 PresetIndex);
 TOptional<uint8> ParseControlResponse(TArrayView<const uint8> Data, uint8 RequestedOpcode);
 FString ControlResultName(uint8 ResultCode);

@@ -4,6 +4,7 @@
 #include "ArriettyPawn.h"
 
 #include "ArriettyBluetoothManager.h"
+#include "ArriettyAlertWidget.h"
 #include "ArriettyInstrumentWidget.h"
 #include "ArriettyRideLog.h"
 #include "ArriettyTrainerProtocol.h"
@@ -56,12 +57,26 @@ AArriettyPawn::AArriettyPawn()
     InstrumentComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("VR Instrument Panel"));
     InstrumentComponent->SetupAttachment(SceneRoot);
     InstrumentComponent->SetWidgetSpace(EWidgetSpace::World);
-    InstrumentComponent->SetDrawSize(FVector2D(800.0, 360.0));
+    InstrumentComponent->SetDrawSize(FVector2D(900.0, 500.0));
+    InstrumentComponent->SetRedrawTime(0.10f);
     InstrumentComponent->SetPivot(FVector2D(0.5, 0.5));
     InstrumentComponent->SetTwoSided(true);
     InstrumentComponent->SetBlendMode(EWidgetBlendMode::Transparent);
     InstrumentComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     InstrumentComponent->SetVisibility(false);
+
+    AlertComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("VR Alert"));
+    AlertComponent->SetupAttachment(Camera);
+    AlertComponent->SetWidgetSpace(EWidgetSpace::World);
+    AlertComponent->SetDrawSize(FVector2D(900.0, 180.0));
+    AlertComponent->SetPivot(FVector2D(0.5, 0.5));
+    AlertComponent->SetRelativeLocation(FVector(150.0, 0.0, -18.0));
+    AlertComponent->SetRelativeRotation(FRotator(0.0, 180.0, 0.0));
+    AlertComponent->SetRelativeScale3D(FVector(0.05));
+    AlertComponent->SetTwoSided(true);
+    AlertComponent->SetBlendMode(EWidgetBlendMode::Transparent);
+    AlertComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    AlertComponent->SetVisibility(false);
 
     Snapshot.PositionMeters = StartPositionMeters;
     Snapshot.HeadingDegrees = StartHeadingDegrees;
@@ -77,6 +92,8 @@ void AArriettyPawn::BeginPlay()
     RideLog = MakeUnique<FArriettyRideLog>();
     InstrumentComponent->SetWidgetClass(UArriettyInstrumentWidget::StaticClass());
     InstrumentComponent->InitWidget();
+    AlertComponent->SetWidgetClass(UArriettyAlertWidget::StaticClass());
+    AlertComponent->InitWidget();
     RefreshRideSurfaceMode();
     UpdateWorldTransform(false);
     InstrumentComponent->SetVisibility(false);
@@ -118,11 +135,18 @@ void AArriettyPawn::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     PumpBluetoothEvents();
+    if (Snapshot.HeartRateBpm.IsSet() &&
+        FPlatformTime::Seconds() - LastHeartRateSampleSeconds > Arrietty::HeartRateStaleSeconds)
+    {
+        Snapshot.HeartRateBpm.Reset();
+        Snapshot.HeartRateStatus = TEXT("STALE");
+    }
     UpdateSteering();
     MaybeBeginRiding();
     AdvanceRide(FMath::Min(DeltaSeconds, 0.25f));
     UpdateInstrumentAnchor();
     UpdateInstrumentWidget();
+    UpdateVrAlert();
 
     FpsAccumulatorSeconds += DeltaSeconds;
     ++FpsAccumulatorFrames;
@@ -208,6 +232,7 @@ void AArriettyPawn::ToggleVrSession()
         StopRide(TEXT("BACK_TO_REAL_WORLD"));
         bInstrumentVisible = false;
         InstrumentComponent->SetVisibility(false);
+        AlertComponent->SetVisibility(false);
         InstrumentAnchorStatus = TEXT("HIDDEN - Instrument panel is hidden");
         bVrSessionActive = false;
         if (GEngine && GEngine->StereoRenderingDevice.IsValid())
@@ -357,6 +382,8 @@ void AArriettyPawn::StartRide()
     Snapshot.FtmsSpeedKmh = 0.0;
     Snapshot.CadenceRpm = 0.0;
     Snapshot.PowerWatts = 0;
+    Snapshot.HeartRateBpm.Reset();
+    Snapshot.HeartRateStatus = TEXT("SEARCHING");
     Snapshot.DistanceMeters = 0.0;
     Snapshot.LapsCompleted = 0;
     Snapshot.AppliedPreset.Reset();
@@ -364,8 +391,10 @@ void AArriettyPawn::StartRide()
     Snapshot.AltitudeMeters = 0.0;
     FtmsSpeedKmh = 0.0;
     LastFtmsSampleSeconds = 0.0;
+    LastHeartRateSampleSeconds = 0.0;
     bTrainerSignalReceived = false;
     bSteeringCalibrated = false;
+    bControllerTrackingLossAlerted = false;
     FilteredSteeringDegrees = 0.0;
     bWheelSignalReceived = false;
     WheelRevolutions.Reset();
@@ -389,9 +418,17 @@ void AArriettyPawn::StopRide(const TCHAR* LogEvent)
     }
     Snapshot.SpeedKmh = 0.0;
     Snapshot.FtmsSpeedKmh = 0.0;
+    Snapshot.HeartRateBpm.Reset();
+    Snapshot.HeartRateStatus = TEXT("DISCONNECTED");
+    LastHeartRateSampleSeconds = 0.0;
     Snapshot.bFlightEnabled = false;
     Snapshot.AltitudeMeters = 0.0;
     Snapshot.bSteeringTracking = false;
+    bControllerTrackingLossAlerted = false;
+    if (AlertComponent)
+    {
+        AlertComponent->SetVisibility(false);
+    }
     UpdateWorldTransform(false);
     if (RideLog && RideLog->IsActive())
     {
@@ -404,6 +441,7 @@ void AArriettyPawn::ToggleFlight()
     if (!IsRideActive())
     {
         Snapshot.Message = TEXT("Start the ride before enabling flight");
+        ShowVrAlert(TEXT("START RIDE BEFORE FLIGHT"));
         return;
     }
     Snapshot.bFlightEnabled = !Snapshot.bFlightEnabled;
@@ -411,6 +449,12 @@ void AArriettyPawn::ToggleFlight()
     {
         Snapshot.AltitudeMeters = 0.0;
     }
+    Snapshot.Message = Snapshot.bFlightEnabled
+        ? TEXT("Flight enabled; altitude follows speed and XY remains on the ride surface")
+        : TEXT("Ground mode enabled");
+    ShowVrAlert(Snapshot.bFlightEnabled
+        ? TEXT("FLIGHT MODE\nCOURSE SURFACE STILL REQUIRED")
+        : TEXT("GROUND MODE"), 2.5);
     UpdateWorldTransform(false);
 }
 
@@ -553,6 +597,18 @@ void AArriettyPawn::PumpBluetoothEvents()
         case EArriettyBluetoothEventType::CscUnavailable:
             Snapshot.Message = TEXT("CSC wheel rotation unavailable; using FTMS speed only");
             break;
+        case EArriettyBluetoothEventType::HeartRateConnected:
+            Snapshot.HeartRateStatus = Event.Message;
+            break;
+        case EArriettyBluetoothEventType::HeartRateSample:
+            Snapshot.HeartRateBpm = Event.HeartRateBpm;
+            Snapshot.HeartRateStatus = TEXT("CONNECTED");
+            LastHeartRateSampleSeconds = Event.ReceivedAtSeconds;
+            break;
+        case EArriettyBluetoothEventType::HeartRateUnavailable:
+            Snapshot.HeartRateBpm.Reset();
+            Snapshot.HeartRateStatus = Event.Message;
+            break;
         case EArriettyBluetoothEventType::Error:
             Snapshot.Status = EArriettyRideStatus::Error;
             Snapshot.Message = Event.Message;
@@ -563,6 +619,7 @@ void AArriettyPawn::PumpBluetoothEvents()
             Snapshot.AppliedPreset.Reset();
             Snapshot.bFlightEnabled = false;
             Snapshot.AltitudeMeters = 0.0;
+            ShowVrAlert(FString::Printf(TEXT("BLUETOOTH ERROR\n%s"), *Event.Message), 5.0);
             if (RideLog && RideLog->IsActive()) RideLog->Stop(TEXT("ERROR"), &Snapshot);
             break;
         case EArriettyBluetoothEventType::WorkerStopped:
@@ -633,6 +690,11 @@ void AArriettyPawn::UpdateSteering()
         if (Snapshot.Status == EArriettyRideStatus::Riding)
         {
             Snapshot.Message = TEXT("Ride paused; right controller tracking was lost");
+            if (!bControllerTrackingLossAlerted)
+            {
+                bControllerTrackingLossAlerted = true;
+                ShowVrAlert(TEXT("STEERING TRACKING LOST\nMOVEMENT PAUSED"), 4.0);
+            }
         }
         return;
     }
@@ -650,6 +712,11 @@ void AArriettyPawn::UpdateSteering()
     }
 
     Snapshot.bSteeringTracking = true;
+    if (bControllerTrackingLossAlerted)
+    {
+        bControllerTrackingLossAlerted = false;
+        ShowVrAlert(TEXT("STEERING TRACKING RESTORED"), 2.0);
+    }
 
     // Steering is measured in tracking-space. A world-space rotation would feed
     // the bicycle's own turn back into the controller angle on the next frame.
@@ -740,7 +807,13 @@ void AArriettyPawn::AdvanceRide(float DeltaSeconds)
     double NextGroundHeight = GroundHeightMeters;
     if (bWorldUsesRideSurfaces && !ResolveRideSurfaceHeight(NextPosition, NextGroundHeight))
     {
+        const bool bFirstCourseEdgeFrame =
+            !Snapshot.Message.StartsWith(TEXT("Ride paused; no ride surface"));
         Snapshot.Message = TEXT("Ride paused; no ride surface under the bicycle");
+        if (bFirstCourseEdgeFrame)
+        {
+            ShowVrAlert(TEXT("COURSE EDGE\nMOVEMENT PAUSED"), 3.0);
+        }
         UpdateWorldTransform(false);
         return;
     }
@@ -890,6 +963,30 @@ void AArriettyPawn::UpdateInstrumentWidget()
     if (UArriettyInstrumentWidget* Widget = Cast<UArriettyInstrumentWidget>(InstrumentComponent->GetWidget()))
     {
         Widget->SetRideSnapshot(Snapshot);
+    }
+}
+
+void AArriettyPawn::ShowVrAlert(const FString& Message, double DurationSeconds)
+{
+    if (!bVrSessionActive || !AlertComponent)
+    {
+        return;
+    }
+    if (UArriettyAlertWidget* Widget =
+        Cast<UArriettyAlertWidget>(AlertComponent->GetWidget()))
+    {
+        Widget->SetAlert(Message);
+        AlertComponent->SetVisibility(true);
+        AlertVisibleUntilSeconds = FPlatformTime::Seconds() + FMath::Max(0.5, DurationSeconds);
+    }
+}
+
+void AArriettyPawn::UpdateVrAlert()
+{
+    if (AlertComponent && AlertComponent->IsVisible() &&
+        FPlatformTime::Seconds() >= AlertVisibleUntilSeconds)
+    {
+        AlertComponent->SetVisibility(false);
     }
 }
 
