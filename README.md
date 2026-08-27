@@ -77,7 +77,7 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 - UE 5.8.2 Editor: ビルド成功
 - Win64 Development Game / Shipping: ビルド成功
 - Visual Studio 2026ソリューション: 生成成功（ToolsVersion 18.0）
-- UE Automation: 5テスト成功（心拍、FTMS、CSC、制御コマンド、走行規則）
+- UE Automation: 6テスト成功（心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
 - NullRHIゲーム起動: `ArriettyGameMode`と`ArriettyWorld`マップのロード成功
 - Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み
 - T2、HMD、右コントローラーを組み合わせた実機走行: 起動、正面整合、直進、Esc終了を確認済み（2026-08-27）

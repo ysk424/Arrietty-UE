@@ -45,12 +45,12 @@ UTextBlock* MakeInstrumentText(
 }
 }
 
-void UArriettyInstrumentWidget::NativeConstruct()
+TSharedRef<SWidget> UArriettyInstrumentWidget::RebuildWidget()
 {
-    Super::NativeConstruct();
+    Initialize();
     if (!WidgetTree || WidgetTree->RootWidget)
     {
-        return;
+        return Super::RebuildWidget();
     }
 
     UBorder* OuterBezel = WidgetTree->ConstructWidget<UBorder>();
@@ -115,6 +115,11 @@ void UArriettyInstrumentWidget::NativeConstruct()
     StatusText = MakeInstrumentText(
         WidgetTree, Root, TEXT("SYSTEM READY"), 22, InstrumentOrange, ETextJustify::Center);
     StatusText->SetAutoWrapText(true);
+
+    // A native UUserWidget must populate its WidgetTree before the base
+    // RebuildWidget takes the root. Building it from NativeConstruct is too
+    // late: WidgetComponent has already cached the empty SSpacer by then.
+    return Super::RebuildWidget();
 }
 
 void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Snapshot)

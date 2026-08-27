@@ -17,8 +17,10 @@ class ARRIETTY_API UArriettyInstrumentWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
-    virtual void NativeConstruct() override;
     void SetRideSnapshot(const FArriettyRideSnapshot& Snapshot);
+
+protected:
+    virtual TSharedRef<SWidget> RebuildWidget() override;
 
 private:
     UPROPERTY()

@@ -62,7 +62,11 @@ AArriettyPawn::AArriettyPawn()
     InstrumentComponent->SetRedrawTime(0.10f);
     InstrumentComponent->SetPivot(FVector2D(0.5, 0.5));
     InstrumentComponent->SetTwoSided(false);
-    InstrumentComponent->SetBlendMode(EWidgetBlendMode::Opaque);
+    InstrumentComponent->SetBlendMode(EWidgetBlendMode::Masked);
+    InstrumentComponent->SetBackgroundColor(FLinearColor::Transparent);
+    InstrumentComponent->SetTintColorAndOpacity(FLinearColor::White);
+    InstrumentComponent->SetOpacityFromTexture(1.0f);
+    InstrumentComponent->SetCastShadow(false);
     InstrumentComponent->SetTickWhenOffscreen(true);
     InstrumentComponent->SetManuallyRedraw(false);
     InstrumentComponent->SetDrawAtDesiredSize(false);
@@ -79,7 +83,11 @@ AArriettyPawn::AArriettyPawn()
     AlertComponent->SetRelativeRotation(FRotator(0.0, 180.0, 0.0));
     AlertComponent->SetRelativeScale3D(FVector(0.05));
     AlertComponent->SetTwoSided(true);
-    AlertComponent->SetBlendMode(EWidgetBlendMode::Opaque);
+    AlertComponent->SetBlendMode(EWidgetBlendMode::Masked);
+    AlertComponent->SetBackgroundColor(FLinearColor::Transparent);
+    AlertComponent->SetTintColorAndOpacity(FLinearColor::White);
+    AlertComponent->SetOpacityFromTexture(1.0f);
+    AlertComponent->SetCastShadow(false);
     AlertComponent->SetTickWhenOffscreen(true);
     AlertComponent->SetWindowFocusable(false);
     AlertComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);

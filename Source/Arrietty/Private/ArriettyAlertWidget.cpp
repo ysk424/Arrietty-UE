@@ -7,12 +7,12 @@
 #include "Components/Border.h"
 #include "Components/TextBlock.h"
 
-void UArriettyAlertWidget::NativeConstruct()
+TSharedRef<SWidget> UArriettyAlertWidget::RebuildWidget()
 {
-    Super::NativeConstruct();
+    Initialize();
     if (!WidgetTree || WidgetTree->RootWidget)
     {
-        return;
+        return Super::RebuildWidget();
     }
 
     UBorder* Background = WidgetTree->ConstructWidget<UBorder>();
@@ -33,6 +33,8 @@ void UArriettyAlertWidget::NativeConstruct()
     Font.OutlineSettings.OutlineColor = FLinearColor::Black;
     AlertText->SetFont(Font);
     Background->SetContent(AlertText);
+
+    return Super::RebuildWidget();
 }
 
 void UArriettyAlertWidget::SetAlert(const FString& Message)

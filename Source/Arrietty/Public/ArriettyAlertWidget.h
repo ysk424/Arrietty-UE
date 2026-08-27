@@ -15,8 +15,10 @@ class ARRIETTY_API UArriettyAlertWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
-    virtual void NativeConstruct() override;
     void SetAlert(const FString& Message);
+
+protected:
+    virtual TSharedRef<SWidget> RebuildWidget() override;
 
 private:
     UPROPERTY()
