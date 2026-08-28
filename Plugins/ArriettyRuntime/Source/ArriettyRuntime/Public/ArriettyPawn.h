@@ -72,6 +72,9 @@ public:
 
 private:
     bool TryStartVrSession();
+    bool TryAlignHmdToBike();
+    void RetryHmdAlignment();
+    bool TryGetHmdTrackingForward(FVector2D& OutForward, double& OutYawDegrees) const;
     void ActivateVrSession();
     void InitializeVrAtStartup();
     void PumpBluetoothEvents();
@@ -86,6 +89,9 @@ private:
     void UpdateSteering();
     void MaybeBeginRiding();
     void AdvanceRide(float DeltaSeconds);
+    void AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeconds);
+    void ResetHumanPoweredFlight(double InitialAirspeedKmh = 0.0);
+    void SyncHumanPoweredFlightSnapshot();
     void UpdateWorldTransform(bool bRequireRideSurface);
     bool ResolveRideSurfaceHeight(const FVector2D& PositionMeters, double& OutHeightMeters) const;
     void RefreshRideSurfaceMode();
@@ -142,6 +148,7 @@ private:
     TUniquePtr<FArriettySerialController> SerialController;
     TUniquePtr<FArriettyRideLog> RideLog;
     FArriettyRideSnapshot Snapshot;
+    FArriettyFlightState FlightState;
 
     FVector2D StartPositionMeters = FVector2D::ZeroVector;
     double StartHeadingDegrees = 0.0;
@@ -168,6 +175,9 @@ private:
     double LastRecordedRecoveryDistanceMeters = 0.0;
     int32 VrStartupAttempts = 0;
     FTimerHandle VrStartupRetryTimer;
+    int32 HmdAlignmentAttempts = 0;
+    FTimerHandle HmdAlignmentRetryTimer;
+    bool bHmdAligned = false;
     bool bInstrumentVisible = false;
     bool bWorldUsesRideSurfaces = false;
     bool bTrainerSignalReceived = false;

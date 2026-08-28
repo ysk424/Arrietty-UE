@@ -35,6 +35,13 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogArriettyRide, Log, All);
 
+namespace
+{
+constexpr int32 HmdAlignmentMaxAttempts = 20;
+constexpr float HmdAlignmentRetrySeconds = 0.05f;
+constexpr double HmdAlignmentToleranceDegrees = 1.0;
+}
+
 AArriettyPawn::AArriettyPawn()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -166,6 +173,7 @@ void AArriettyPawn::BeginPlay()
 
 void AArriettyPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    GetWorldTimerManager().ClearTimer(HmdAlignmentRetryTimer);
     StopRide(TEXT("STOP"));
     if (Bluetooth)
     {
@@ -259,6 +267,15 @@ FString AArriettyPawn::GetVrStatusText() const
 
 FVector2D AArriettyPawn::GetHmdForward() const
 {
+    FVector2D TrackingForward;
+    double TrackingYawDegrees = 0.0;
+    if (VrOrigin && TryGetHmdTrackingForward(TrackingForward, TrackingYawDegrees))
+    {
+        const FVector WorldForward = VrOrigin->GetComponentTransform()
+            .TransformVectorNoScale(FVector(TrackingForward.X, TrackingForward.Y, 0.0))
+            .GetSafeNormal2D();
+        return FVector2D(WorldForward.X, WorldForward.Y);
+    }
     if (!Camera)
     {
         return FVector2D::ZeroVector;
@@ -277,6 +294,8 @@ void AArriettyPawn::ToggleVrSession()
 {
     if (bVrSessionActive)
     {
+        GetWorldTimerManager().ClearTimer(HmdAlignmentRetryTimer);
+        bHmdAligned = false;
         StopRide(TEXT("BACK_TO_REAL_WORLD"));
         bInstrumentVisible = false;
         InstrumentComponent->SetVisibility(false);
@@ -300,45 +319,141 @@ void AArriettyPawn::ToggleVrSession()
 
 void AArriettyPawn::RecenterHmdToBike()
 {
+    GetWorldTimerManager().ClearTimer(HmdAlignmentRetryTimer);
+    HmdAlignmentAttempts = 0;
+    bHmdAligned = false;
     if (!bVrSessionActive || !IsHmdAvailable())
     {
         Snapshot.Message = TEXT("HMD alignment failed: start VR and connect the HMD first");
+        ShowVrAlert(TEXT("HMD ALIGNMENT FAILED\nCONNECT THE HMD"), 4.0);
         return;
     }
 
-    const FVector HmdWorldForward3D = Camera->GetForwardVector().GetSafeNormal2D();
-    const FVector2D HmdWorldForward(HmdWorldForward3D.X, HmdWorldForward3D.Y);
-    if (HmdWorldForward.IsNearlyZero())
-    {
-        Snapshot.Message = TEXT("HMD alignment failed: look near the horizon and try again");
-        return;
-    }
+    Snapshot.Message = TEXT("Aligning the live OpenXR HMD pose; look along the ride direction");
+    TryAlignHmdToBike();
+}
 
-    // The course start or manual setup owns the bicycle heading. Rotate only
-    // the tracking origin so the current HMD forward matches that heading;
-    // never replace the course direction with the direction the rider happened
-    // to be looking when Start was pressed.
+bool AArriettyPawn::TryAlignHmdToBike()
+{
+    ++HmdAlignmentAttempts;
     UpdateWorldTransform(false);
-    const FVector BikeWorldForward3D = GetActorForwardVector().GetSafeNormal2D();
-    const FVector2D BikeWorldForward(BikeWorldForward3D.X, BikeWorldForward3D.Y);
-    const double YawCorrectionDegrees = ArriettyTrainerProtocol::YawCorrectionDegrees(
-        HmdWorldForward, BikeWorldForward);
-    VrOrigin->AddWorldRotation(FRotator(0.0, YawCorrectionDegrees, 0.0));
+
+    FVector2D HmdTrackingForward;
+    double HmdTrackingYawDegrees = 0.0;
+    if (!TryGetHmdTrackingForward(HmdTrackingForward, HmdTrackingYawDegrees))
+    {
+        if (HmdAlignmentAttempts < HmdAlignmentMaxAttempts && GetWorld())
+        {
+            GetWorldTimerManager().SetTimer(
+                HmdAlignmentRetryTimer,
+                this,
+                &AArriettyPawn::RetryHmdAlignment,
+                HmdAlignmentRetrySeconds,
+                false);
+            return false;
+        }
+        Snapshot.Message = TEXT("HMD alignment failed: OpenXR did not provide a valid live pose");
+        ShowVrAlert(TEXT("HMD ALIGNMENT FAILED\nCHECK LIGHTHOUSE TRACKING"), 4.0);
+        UE_LOG(LogArriettyRide, Error,
+            TEXT("HMD alignment failed after %d live-pose attempts"),
+            HmdAlignmentAttempts);
+        return false;
+    }
+
+    // GetCurrentPose returns tracking-space data that is independent of both
+    // the Pawn and VROrigin. Set an absolute relative yaw so that the current
+    // tracked HMD forward becomes the bicycle's local +X. Camera Component
+    // transforms can be replaced by OpenXR render-thread late update, and an
+    // additive origin rotation can retain a correction from an earlier run.
+    const double OriginYawDegrees =
+        ArriettyTrainerProtocol::HmdOriginYawDegrees(HmdTrackingForward);
+    VrOrigin->SetRelativeRotation(FRotator(0.0, OriginYawDegrees, 0.0));
+
+    const FVector2D AlignedHmdWorldForward = GetHmdForward();
+    const FVector2D BikeWorldForward = GetBikeWorldForward();
+    const double ResidualDegrees = ArriettyTrainerProtocol::YawCorrectionDegrees(
+        AlignedHmdWorldForward,
+        BikeWorldForward);
+    if (FMath::Abs(ResidualDegrees) > HmdAlignmentToleranceDegrees &&
+        HmdAlignmentAttempts < HmdAlignmentMaxAttempts && GetWorld())
+    {
+        GetWorldTimerManager().SetTimer(
+            HmdAlignmentRetryTimer,
+            this,
+            &AArriettyPawn::RetryHmdAlignment,
+            HmdAlignmentRetrySeconds,
+            false);
+        return false;
+    }
+
+    GetWorldTimerManager().ClearTimer(HmdAlignmentRetryTimer);
+    bHmdAligned = FMath::Abs(ResidualDegrees) <= HmdAlignmentToleranceDegrees;
+    if (!bHmdAligned)
+    {
+        Snapshot.Message = FString::Printf(
+            TEXT("HMD alignment failed: residual yaw %+.1f degrees"),
+            ResidualDegrees);
+        ShowVrAlert(TEXT("HMD ALIGNMENT RESIDUAL TOO LARGE"), 4.0);
+        return false;
+    }
+
     UE_LOG(LogArriettyRide, Display,
-        TEXT("View aligned to ride heading %.1f degrees (HMD yaw correction %+.1f degrees)"),
+        TEXT("View aligned from live OpenXR pose: ride heading %.1f deg, tracking yaw %+.1f deg, origin yaw %+.1f deg, residual %+.2f deg, attempts %d"),
         Snapshot.HeadingDegrees,
-        YawCorrectionDegrees);
+        HmdTrackingYawDegrees,
+        OriginYawDegrees,
+        ResidualDegrees,
+        HmdAlignmentAttempts);
 
     bSteeringCalibrated = false;
     FilteredSteeringDegrees = 0.0;
     Snapshot.RawSteeringDegrees = 0.0;
     Snapshot.EffectiveSteeringDegrees = 0.0;
-
-    // Give the rider time to keep the real handle centered before capturing a
-    // new tracking-space steering reference.
     SteeringCalibrationReadyAtSeconds = FPlatformTime::Seconds() + 0.75;
     ResetInstrumentAnchor();
     Snapshot.Message = TEXT("View aligned to the course direction; keep the handle centered");
+    MaybeBeginRiding();
+    return true;
+}
+
+void AArriettyPawn::RetryHmdAlignment()
+{
+    TryAlignHmdToBike();
+}
+
+bool AArriettyPawn::TryGetHmdTrackingForward(
+    FVector2D& OutForward,
+    double& OutYawDegrees) const
+{
+    OutForward = FVector2D::ZeroVector;
+    OutYawDegrees = 0.0;
+    if (!GEngine || !GEngine->XRSystem.IsValid())
+    {
+        return false;
+    }
+
+    FQuat Orientation = FQuat::Identity;
+    FVector Position = FVector::ZeroVector;
+    if (!GEngine->XRSystem->GetCurrentPose(
+            IXRTrackingSystem::HMDDeviceId,
+            Orientation,
+            Position) ||
+        Orientation.ContainsNaN() ||
+        Orientation.SizeSquared() <= SMALL_NUMBER)
+    {
+        return false;
+    }
+    Orientation.Normalize();
+    const FVector TrackingForward3D = Orientation
+        .RotateVector(FVector::ForwardVector)
+        .GetSafeNormal2D();
+    OutForward = FVector2D(TrackingForward3D.X, TrackingForward3D.Y);
+    if (OutForward.IsNearlyZero())
+    {
+        return false;
+    }
+    OutYawDegrees = FMath::RadiansToDegrees(FMath::Atan2(OutForward.Y, OutForward.X));
+    return true;
 }
 
 bool AArriettyPawn::TryStartVrSession()
@@ -387,6 +502,7 @@ void AArriettyPawn::ActivateVrSession()
     }
     GEngine->XRSystem->SetTrackingOrigin(EHMDTrackingOrigin::LocalFloor);
     GEngine->XRSystem->ResetOrientationAndPosition(0.0f);
+    bHmdAligned = false;
     bVrSessionActive = true;
     bInstrumentVisible = true;
     ResetInstrumentAnchor();
@@ -456,6 +572,7 @@ void AArriettyPawn::StartRide()
     Snapshot.AppliedGradePercent = 0.0;
     Snapshot.bFlightEnabled = false;
     Snapshot.AltitudeMeters = 0.0;
+    ResetHumanPoweredFlight();
     FtmsSpeedKmh = 0.0;
     LastFtmsSampleSeconds = 0.0;
     LastHeartRateSampleSeconds = 0.0;
@@ -494,7 +611,9 @@ void AArriettyPawn::StopRide(const TCHAR* LogEvent)
     Snapshot.bFlightEnabled = false;
     Snapshot.AppliedGradePercent = 0.0;
     Snapshot.AltitudeMeters = 0.0;
+    ResetHumanPoweredFlight();
     Snapshot.bSteeringTracking = false;
+    bHmdAligned = false;
     bControllerTrackingLossAlerted = false;
     if (AlertComponent)
     {
@@ -517,6 +636,12 @@ void AArriettyPawn::ToggleFlight()
     }
     if (Snapshot.bFlightEnabled)
     {
+        if (FlightState.bAirborne || FlightState.AltitudeMeters > 0.05)
+        {
+            Snapshot.Message = TEXT("Land the human-powered aircraft before returning to ground mode");
+            ShowVrAlert(TEXT("LAND BEFORE GROUND MODE\nFLIGHT CONTINUES"), 3.5);
+            return;
+        }
         double LandingGroundHeight = GroundHeightMeters;
         if (bWorldUsesRideSurfaces &&
             !ResolveRideSurfaceHeight(Snapshot.PositionMeters, LandingGroundHeight))
@@ -527,15 +652,16 @@ void AArriettyPawn::ToggleFlight()
         }
         GroundHeightMeters = LandingGroundHeight;
         Snapshot.bFlightEnabled = false;
-        Snapshot.AltitudeMeters = 0.0;
+        ResetHumanPoweredFlight();
         Snapshot.Message = TEXT("Ground mode enabled");
         ShowVrAlert(TEXT("GROUND MODE"), 2.5);
     }
     else
     {
         Snapshot.bFlightEnabled = true;
-        Snapshot.Message = TEXT("Flight enabled; altitude follows speed and XY can leave the course");
-        ShowVrAlert(TEXT("FLIGHT MODE\nFREE HORIZONTAL MOVEMENT"), 2.5);
+        ResetHumanPoweredFlight(Snapshot.SpeedKmh);
+        Snapshot.Message = TEXT("Human-powered flight ready; pull Joystick 2 X above 20 km/h to take off");
+        ShowVrAlert(TEXT("HUMAN-POWERED FLIGHT\nJ2 X PITCH  J2 Y BANK\nHANDLE RUDDER"), 3.5);
     }
     UpdateWorldTransform(false);
 }
@@ -830,9 +956,12 @@ void AArriettyPawn::PumpBluetoothEvents()
             if (Event.TrainerSample.PowerWatts.IsSet()) Snapshot.PowerWatts = FMath::Max(0, Event.TrainerSample.PowerWatts.GetValue());
             Snapshot.FtmsSpeedKmh = FtmsSpeedKmh;
             bTrainerSignalReceived = true;
-            Snapshot.SpeedKmh = ArriettyTrainerProtocol::EffectiveSpeedKmh(
-                FPlatformTime::Seconds(), LastFtmsSampleSeconds, FtmsSpeedKmh,
-                Snapshot.CadenceRpm, bWheelSignalReceived, LastWheelMotionSeconds, WheelPeriodSeconds);
+            if (!Snapshot.bFlightEnabled)
+            {
+                Snapshot.SpeedKmh = ArriettyTrainerProtocol::EffectiveSpeedKmh(
+                    FPlatformTime::Seconds(), LastFtmsSampleSeconds, FtmsSpeedKmh,
+                    Snapshot.CadenceRpm, bWheelSignalReceived, LastWheelMotionSeconds, WheelPeriodSeconds);
+            }
             MaybeBeginRiding();
             RecordTelemetry();
             break;
@@ -865,6 +994,7 @@ void AArriettyPawn::PumpBluetoothEvents()
             Snapshot.AppliedGradePercent = 0.0;
             Snapshot.bFlightEnabled = false;
             Snapshot.AltitudeMeters = 0.0;
+            ResetHumanPoweredFlight();
             ShowVrAlert(FString::Printf(TEXT("BLUETOOTH ERROR\n%s"), *Event.Message), 5.0);
             if (RideLog && RideLog->IsActive()) RideLog->Stop(TEXT("ERROR"), &Snapshot);
             break;
@@ -1025,9 +1155,14 @@ void AArriettyPawn::UpdateSteering()
 
 void AArriettyPawn::MaybeBeginRiding()
 {
-    if (!bTrainerSignalReceived || !Snapshot.bSteeringTracking)
+    if (!bTrainerSignalReceived || !Snapshot.bSteeringTracking || !bHmdAligned)
     {
-        if (bTrainerSignalReceived && Snapshot.Status != EArriettyRideStatus::Riding)
+        if (bTrainerSignalReceived && !bHmdAligned)
+        {
+            Snapshot.Status = EArriettyRideStatus::WaitingSteering;
+            Snapshot.Message = TEXT("T2 received; waiting for valid HMD alignment");
+        }
+        else if (bTrainerSignalReceived && Snapshot.Status != EArriettyRideStatus::Riding)
         {
             Snapshot.Status = EArriettyRideStatus::WaitingSteering;
             Snapshot.Message = TEXT("T2 received; waiting for the steering controller");
@@ -1051,13 +1186,19 @@ void AArriettyPawn::AdvanceRide(float DeltaSeconds)
         return;
     }
     const double Now = FPlatformTime::Seconds();
-    Snapshot.SpeedKmh = ArriettyTrainerProtocol::EffectiveSpeedKmh(
+    const double TrainerSpeedKmh = ArriettyTrainerProtocol::EffectiveSpeedKmh(
         Now, LastFtmsSampleSeconds, FtmsSpeedKmh, Snapshot.CadenceRpm,
         bWheelSignalReceived, LastWheelMotionSeconds, WheelPeriodSeconds);
     if (!Snapshot.bSteeringTracking)
     {
         return;
     }
+    if (Snapshot.bFlightEnabled)
+    {
+        AdvanceHumanPoweredFlight(DeltaSeconds, Now);
+        return;
+    }
+    Snapshot.SpeedKmh = TrainerSpeedKmh;
     if (IsWheelStopped(Now) && FtmsSpeedKmh > 0.0)
     {
         Snapshot.Message = TEXT("Stopped; CSC wheel rotation is stationary");
@@ -1071,9 +1212,7 @@ void AArriettyPawn::AdvanceRide(float DeltaSeconds)
         Snapshot.Message = TEXT("Trainer motion received; steering is active");
     }
 
-    Snapshot.AltitudeMeters = Snapshot.bFlightEnabled
-        ? ArriettyTrainerProtocol::AltitudeForSpeed(Snapshot.SpeedKmh)
-        : 0.0;
+    Snapshot.AltitudeMeters = 0.0;
     const double AdvanceMeters = Snapshot.SpeedKmh / 3.6 * DeltaSeconds;
     if (AdvanceMeters <= 0.0)
     {
@@ -1120,6 +1259,114 @@ void AArriettyPawn::AdvanceRide(float DeltaSeconds)
         Snapshot.DistanceMeters, LapLengthMeters);
     RecordRecoveryPose(AdvanceMeters);
     UpdateWorldTransform(false);
+}
+
+void AArriettyPawn::AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeconds)
+{
+    double LandingGroundHeight = GroundHeightMeters;
+    const bool bCanLand = !bWorldUsesRideSurfaces ||
+        ResolveRideSurfaceHeight(Snapshot.PositionMeters, LandingGroundHeight);
+    const double RiderPowerWatts = NowSeconds - LastFtmsSampleSeconds <= Arrietty::SampleStaleSeconds
+        ? Snapshot.PowerWatts
+        : 0.0;
+    const FArriettyFlightStepResult FlightResult =
+        ArriettyTrainerProtocol::StepHumanPoweredFlight(
+            FlightState,
+            RiderPowerWatts,
+            Snapshot.ControllerJoystick2.X,
+            Snapshot.ControllerJoystick2.Y,
+            Snapshot.EffectiveSteeringDegrees,
+            DeltaSeconds,
+            bCanLand);
+    SyncHumanPoweredFlightSnapshot();
+
+    if (FlightResult.bTookOff)
+    {
+        Snapshot.Message = TEXT("Airborne; human power and elevator now control climb energy");
+        ShowVrAlert(TEXT("TAKEOFF"), 2.0);
+        RecordTelemetry(TEXT("TAKEOFF"));
+    }
+    if (FlightResult.bStallStarted)
+    {
+        Snapshot.Message = TEXT("STALL: lower the nose and recover above 20.5 km/h");
+        ShowVrAlert(TEXT("STALL\nNOSE DOWN TO RECOVER"), 3.0);
+        RecordTelemetry(TEXT("STALL"));
+    }
+    if (FlightResult.bStallRecovered)
+    {
+        Snapshot.Message = TEXT("Stall recovered; normal flight controls restored");
+        ShowVrAlert(TEXT("STALL RECOVERED"), 2.0);
+        RecordTelemetry(TEXT("STALL_RECOVERED"));
+    }
+    if (FlightResult.bLanded)
+    {
+        GroundHeightMeters = LandingGroundHeight;
+        Snapshot.Message = TEXT("Landed; aircraft remains in flight mode for another takeoff");
+        ShowVrAlert(TEXT("LANDED"), 2.0);
+        RecordTelemetry(TEXT("LANDING"));
+    }
+    if (FlightResult.bLandingBlocked &&
+        !Snapshot.Message.StartsWith(TEXT("Landing blocked;")))
+    {
+        Snapshot.Message = TEXT("Landing blocked; return above the marked ride surface");
+        ShowVrAlert(TEXT("LANDING REQUIRES COURSE"), 3.0);
+    }
+
+    const double Delta = FMath::Clamp(static_cast<double>(DeltaSeconds), 0.0, 0.25);
+    const double TurnDegrees = FlightState.HeadingRateDegreesPerSecond * Delta;
+    const double MidpointHeading = FMath::DegreesToRadians(
+        Snapshot.HeadingDegrees + TurnDegrees * 0.5);
+    const double HorizontalSpeed = FMath::Sqrt(FMath::Max(
+        0.0,
+        FMath::Square(FlightState.AirspeedMetersPerSecond) -
+            FMath::Square(FlightState.VerticalSpeedMetersPerSecond)));
+    const double AdvanceMeters = HorizontalSpeed * Delta;
+    const FVector2D NextPosition = Snapshot.PositionMeters + FVector2D(
+        FMath::Cos(MidpointHeading),
+        FMath::Sin(MidpointHeading)) * AdvanceMeters;
+
+    double NextGroundHeight = GroundHeightMeters;
+    const bool bHasNextRideSurface = !bWorldUsesRideSurfaces ||
+        ResolveRideSurfaceHeight(NextPosition, NextGroundHeight);
+    if (!FlightState.bAirborne && !bHasNextRideSurface)
+    {
+        FlightState.AirspeedMetersPerSecond = 0.0;
+        SyncHumanPoweredFlightSnapshot();
+        Snapshot.Message = TEXT("Aircraft ground roll paused at the ride-surface edge");
+        ShowVrAlert(TEXT("RUNWAY EDGE\nMOVEMENT PAUSED"), 2.5);
+        UpdateWorldTransform(false);
+        return;
+    }
+    if (!FlightState.bAirborne && bHasNextRideSurface)
+    {
+        GroundHeightMeters = NextGroundHeight;
+    }
+    Snapshot.PositionMeters = NextPosition;
+    Snapshot.DistanceMeters += AdvanceMeters;
+    Snapshot.HeadingDegrees = FMath::UnwindDegrees(
+        Snapshot.HeadingDegrees + TurnDegrees);
+    Snapshot.LapsCompleted = ArriettyTrainerProtocol::CompletedLaps(
+        Snapshot.DistanceMeters,
+        LapLengthMeters);
+    RecordRecoveryPose(AdvanceMeters);
+    UpdateWorldTransform(false);
+}
+
+void AArriettyPawn::ResetHumanPoweredFlight(double InitialAirspeedKmh)
+{
+    ArriettyTrainerProtocol::InitializeHumanPoweredFlight(FlightState, InitialAirspeedKmh);
+    SyncHumanPoweredFlightSnapshot();
+}
+
+void AArriettyPawn::SyncHumanPoweredFlightSnapshot()
+{
+    Snapshot.SpeedKmh = FlightState.AirspeedMetersPerSecond * 3.6;
+    Snapshot.AltitudeMeters = FlightState.AltitudeMeters;
+    Snapshot.VerticalSpeedMetersPerSecond = FlightState.VerticalSpeedMetersPerSecond;
+    Snapshot.BankDegrees = FlightState.BankDegrees;
+    Snapshot.PitchDegrees = FlightState.PitchDegrees;
+    Snapshot.bAircraftAirborne = FlightState.bAirborne;
+    Snapshot.bAircraftStalled = FlightState.bStalled;
 }
 
 void AArriettyPawn::RefreshRideSurfaceMode()
@@ -1177,7 +1424,8 @@ bool AArriettyPawn::ResolveRideSurfaceHeight(
 void AArriettyPawn::UpdateWorldTransform(bool bRequireRideSurface)
 {
     double ResolvedGround = GroundHeightMeters;
-    if (bWorldUsesRideSurfaces)
+    if (bWorldUsesRideSurfaces &&
+        (!Snapshot.bFlightEnabled || !Snapshot.bAircraftAirborne))
     {
         if (ResolveRideSurfaceHeight(Snapshot.PositionMeters, ResolvedGround))
         {
@@ -1194,7 +1442,10 @@ void AArriettyPawn::UpdateWorldTransform(bool bRequireRideSurface)
     }
     SetActorLocationAndRotation(
         ArriettyToWorld(Snapshot.PositionMeters, GroundHeightMeters + Snapshot.AltitudeMeters),
-        FRotator(0.0, -Snapshot.HeadingDegrees, 0.0));
+        FRotator(
+            Snapshot.bAircraftAirborne ? Snapshot.PitchDegrees : 0.0,
+            -Snapshot.HeadingDegrees,
+            Snapshot.bAircraftAirborne ? -Snapshot.BankDegrees : 0.0));
 }
 
 FVector AArriettyPawn::ArriettyToWorld(const FVector2D& PositionMeters, double HeightMeters) const

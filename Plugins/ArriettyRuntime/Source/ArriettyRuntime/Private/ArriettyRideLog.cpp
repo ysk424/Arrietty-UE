@@ -25,7 +25,7 @@ bool FArriettyRideLog::Start()
         return false;
     }
     StartedAtSeconds = FPlatformTime::Seconds();
-    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,power_w,heart_rate_bpm,distance_m,laps_completed,flight_mode,altitude_m,target_altitude_m,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset,brake_button_held,trainer_grade_percent,steering_source\r\n"));
+    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,power_w,heart_rate_bpm,distance_m,laps_completed,flight_mode,airborne,stalled,altitude_m,vertical_speed_mps,bank_degrees,pitch_degrees,effective_mass_kg,glide_ratio,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset,brake_button_held,trainer_grade_percent,steering_source\r\n"));
     FArriettyRideSnapshot Empty;
     Record(TEXT("START"), Empty, 0.0, {}, {}, false, false);
     return true;
@@ -52,11 +52,8 @@ void FArriettyRideLog::Record(
         ? FString::Printf(TEXT("%u"), Snapshot.HeartRateBpm.GetValue())
         : FString();
     const double EyeZ = Snapshot.AltitudeMeters + Arrietty::EyeHeightMeters;
-    const double TargetAltitude = Snapshot.bFlightEnabled
-        ? FMath::Max(0.0, Snapshot.SpeedKmh - Arrietty::TakeoffSpeedKmh)
-        : 0.0;
     WriteUtf8(FString::Printf(
-        TEXT("%s,%.3f,%s,%.2f,%.2f,%.1f,%d,%s,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s,%s,%d,%d,%s,%s,%d,%.1f,%s\r\n"),
+        TEXT("%s,%.3f,%s,%.2f,%.2f,%.1f,%d,%s,%.3f,%d,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.1f,%.1f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s,%s,%d,%d,%s,%s,%d,%.1f,%s\r\n"),
         *Timestamp,
         FPlatformTime::Seconds() - StartedAtSeconds,
         Event,
@@ -68,8 +65,14 @@ void FArriettyRideLog::Record(
         Snapshot.DistanceMeters,
         Snapshot.LapsCompleted,
         Snapshot.bFlightEnabled ? 1 : 0,
+        Snapshot.bAircraftAirborne ? 1 : 0,
+        Snapshot.bAircraftStalled ? 1 : 0,
         Snapshot.AltitudeMeters,
-        TargetAltitude,
+        Snapshot.VerticalSpeedMetersPerSecond,
+        Snapshot.BankDegrees,
+        Snapshot.PitchDegrees,
+        Arrietty::FlightEffectiveMassKg,
+        Arrietty::FlightGlideRatio,
         Arrietty::EyeHeightMeters,
         Snapshot.AltitudeMeters,
         EyeZ,

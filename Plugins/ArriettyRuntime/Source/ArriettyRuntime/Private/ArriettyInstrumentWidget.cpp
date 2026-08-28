@@ -152,21 +152,37 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     const int32 Preset = Snapshot.AppliedPreset.IsSet()
         ? Snapshot.AppliedPreset.GetValue()
         : Snapshot.SelectedPreset;
-    RideDataText->SetText(FText::FromString(FString::Printf(
-        TEXT("CAD %3.0f rpm    PWR %4d W\nDIST %s  LAP %4d\nALT %5.1f m   %s P%d  BRK %.1f%%  FPS %4.1f"),
-        Snapshot.CadenceRpm,
-        Snapshot.PowerWatts,
-        *Distance,
-        Snapshot.LapsCompleted,
-        Snapshot.AltitudeMeters,
-        Snapshot.bFlightEnabled ? TEXT("FLIGHT") : TEXT("GROUND"),
-        Preset,
-        Snapshot.AppliedGradePercent,
-        Snapshot.AverageFps)));
+    const FString RideData = Snapshot.bFlightEnabled
+        ? FString::Printf(
+            TEXT("CAD %3.0f rpm   PWR %4d W   BRK %.1f%%\nDIST %s   ALT %5.1f m   VS %+4.1f\nBANK %+4.1f   PITCH %+4.1f   %s\nAIR %s   L/D %.0f   MASS %.0f kg"),
+            Snapshot.CadenceRpm,
+            Snapshot.PowerWatts,
+            Snapshot.AppliedGradePercent,
+            *Distance,
+            Snapshot.AltitudeMeters,
+            Snapshot.VerticalSpeedMetersPerSecond,
+            Snapshot.BankDegrees,
+            Snapshot.PitchDegrees,
+            Snapshot.bAircraftStalled ? TEXT("STALL") : TEXT("OK"),
+            Snapshot.bAircraftAirborne ? TEXT("AIRBORNE") : TEXT("GROUND ROLL"),
+            Arrietty::FlightGlideRatio,
+            Arrietty::FlightEffectiveMassKg)
+        : FString::Printf(
+            TEXT("CAD %3.0f rpm    PWR %4d W\nDIST %s  LAP %4d\nALT %5.1f m   GROUND P%d  BRK %.1f%%  FPS %4.1f"),
+            Snapshot.CadenceRpm,
+            Snapshot.PowerWatts,
+            *Distance,
+            Snapshot.LapsCompleted,
+            Snapshot.AltitudeMeters,
+            Preset,
+            Snapshot.AppliedGradePercent,
+            Snapshot.AverageFps);
+    RideDataText->SetText(FText::FromString(RideData));
     PositionText->SetText(FText::FromString(FString::Printf(
         TEXT("X %+.1f   Y %+.1f m"), Snapshot.PositionMeters.X, Snapshot.PositionMeters.Y)));
     StatusText->SetText(FText::FromString(Snapshot.Message));
     const bool bWarning = Snapshot.Status == EArriettyRideStatus::Error ||
+        Snapshot.bAircraftStalled ||
         Snapshot.Message.StartsWith(TEXT("Ride paused;"));
     StatusText->SetColorAndOpacity(FSlateColor(bWarning ? InstrumentRed : InstrumentOrange));
 }

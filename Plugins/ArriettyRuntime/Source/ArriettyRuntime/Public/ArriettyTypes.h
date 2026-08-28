@@ -7,14 +7,14 @@
 
 namespace Arrietty
 {
-inline constexpr TCHAR Version[] = TEXT("0.8.0");
+inline constexpr TCHAR Version[] = TEXT("0.9.0");
 inline constexpr TCHAR SteeringControllerSerial[] = TEXT("LHR-9EFF8645");
 inline constexpr TCHAR RideSurfaceTag[] = TEXT("SecretWorldRideSurface");
 inline constexpr double EyeHeightMeters = 1.5;
 inline constexpr double DefaultMoveStepMeters = 0.5;
 inline constexpr double DefaultTurnStepDegrees = 5.0;
 inline constexpr double DefaultLapLengthMeters = 143.0;
-inline constexpr double TakeoffSpeedKmh = 10.0;
+inline constexpr double TakeoffSpeedKmh = 20.0;
 inline constexpr double WheelbaseMeters = 1.05;
 inline constexpr double SteeringGain = 0.50;
 inline constexpr double SteeringDeadzoneDegrees = 1.5;
@@ -26,6 +26,21 @@ inline constexpr double CoastStopSpeedKmh = 5.0;
 inline constexpr double DefaultWheelStopSeconds = 1.5;
 inline constexpr double MinWheelStopSeconds = 0.75;
 inline constexpr double MaxWheelStopSeconds = 4.0;
+inline constexpr double FlightEffectiveMassKg = 35.0;
+inline constexpr double FlightGlideRatio = 30.0;
+inline constexpr double FlightPropellerEfficiency = 0.80;
+inline constexpr double FlightBestGlideSpeedKmh = 24.0;
+inline constexpr double FlightStallSpeedKmh = 18.0;
+inline constexpr double FlightStallRecoverySpeedKmh = 20.5;
+inline constexpr double FlightMaxBankDegrees = 25.0;
+inline constexpr double FlightMaxPitchDegrees = 12.0;
+inline constexpr double FlightMaxElevatorVerticalSpeedMps = 1.5;
+inline constexpr double FlightStallSinkSpeedMps = 2.0;
+inline constexpr double FlightMaxBankTurnRateDegrees = 18.0;
+inline constexpr double FlightMaxRudderTurnRateDegrees = 10.0;
+inline constexpr double FlightControlDeadzone = 0.08;
+inline constexpr double FlightMaxPropellerThrustNewtons = 35.0;
+inline constexpr double FlightGroundRollingResistance = 0.012;
 }
 
 enum class EArriettyRideStatus : uint8
@@ -61,6 +76,27 @@ struct FArriettyControlPreset
     double RollingResistance = 0.004;
 };
 
+struct FArriettyFlightState
+{
+    double AirspeedMetersPerSecond = 0.0;
+    double AltitudeMeters = 0.0;
+    double VerticalSpeedMetersPerSecond = 0.0;
+    double BankDegrees = 0.0;
+    double PitchDegrees = 0.0;
+    double HeadingRateDegreesPerSecond = 0.0;
+    bool bAirborne = false;
+    bool bStalled = false;
+};
+
+struct FArriettyFlightStepResult
+{
+    bool bTookOff = false;
+    bool bLanded = false;
+    bool bStallStarted = false;
+    bool bStallRecovered = false;
+    bool bLandingBlocked = false;
+};
+
 struct FArriettyRideSnapshot
 {
     EArriettyRideStatus Status = EArriettyRideStatus::Idle;
@@ -82,6 +118,11 @@ struct FArriettyRideSnapshot
     double AppliedGradePercent = 0.0;
     double DistanceMeters = 0.0;
     double AltitudeMeters = 0.0;
+    double VerticalSpeedMetersPerSecond = 0.0;
+    double BankDegrees = 0.0;
+    double PitchDegrees = 0.0;
+    bool bAircraftAirborne = false;
+    bool bAircraftStalled = false;
     int32 LapsCompleted = 0;
     bool bFlightEnabled = false;
     bool bSteeringTracking = false;

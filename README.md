@@ -1,6 +1,6 @@
 # Arrietty
 
-Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定したVIVEコントローラーを使い、Unreal EngineのLevel内を走行・飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.8.0です。
+Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定したVIVEコントローラーを使い、Unreal EngineのLevel内を走行・人力飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.9.0です。
 
 ## 確認済み開発環境
 
@@ -57,7 +57,7 @@ pwsh -File .\Tools\Update-ArriettyWorldProject.ps1 `
 3. Arriettyを起動するとOpenXR VRが自動的に開始します。開始しない場合は、画面のVR状態を確認して`Dive into Secret World`を押します。
 4. テンキー`4`/`6`で開始方向、`8`/`2`で開始位置を合わせます。
 5. T2を数回漕いで起こします。
-6. ハンドルを中央に保ってテンキー`0`または`Start Ride`を押します。仮想自転車の進行方向はHMDの向きで上書きせず、`ArriettyCourseStart`の赤いX方向を維持し、HMDの仮想視界をその走行方向へ合わせます。OpenXR座標が安定してから操舵中央を記録するため、押した後も約1秒はハンドルを中央に保ちます。
+6. HMDで実際の自転車の正面をまっすぐ見て、ハンドルを中央に保った状態でテンキー`0`またはButton 1／`Start Ride`を押します。その瞬間の最新OpenXR HMD姿勢を仮想走行方向へ合わせます。仮想自転車の進行方向自体はHMDの向きで上書きせず、`ArriettyCourseStart`の赤いX方向を維持します。OpenXR姿勢と操舵中央が安定するまで、押した後も約1秒は正面を見てハンドルを中央に保ちます。
 7. 開始音の後に走行します。VRから戻る操作は`Back to Real World`です。`VR Preview`では`Esc`または`Exit Arrietty`でPlayを終了してUE Editorへ戻ります。パッケージ版ではArriettyのプロセスを終了します。
 
 キー割り当ては従来版と同じです。
@@ -71,7 +71,7 @@ pwsh -File .\Tools\Update-ArriettyWorldProject.ps1 `
 - `Numpad .`: 自転車の走行方向を変えず、現在のHMD仮想視界を走行方向へ再調整
 - `Esc`: ログとT2接続を終了する。VR PreviewではEditorへ戻り、パッケージ版ではArriettyを閉じる
 
-ESP32有線操作盤を接続した場合はCOMポートを自動検出します。Button 1は走行開始／開始後の約2 m安全復帰、Button 2は地上・飛行モード、Button 6は押下中だけT2へ3%上り勾配を送るブレーキです。Button 3〜5と2台のジョイスティックのX/Y/SWは受信・表示のみで、ゲーム内用途はまだ割り当てていません。USB接続直後の約1秒は中央校正のため両スティックへ触れないでください。
+ESP32有線操作盤を接続した場合はCOMポートを自動検出します。Button 1は走行開始／開始後の約2 m安全復帰、Button 2は地上・人力飛行モード、Button 6は押下中だけT2へ3%上り勾配を送るブレーキです。飛行中は右側のJoystick 2でエルロンとエレベーターを操作します。Button 3〜5、Joystick 1のX/Y/SW、Joystick 2のSWは受信・表示のみで、ゲーム内用途はまだ割り当てていません。USB接続直後の約1秒は中央校正のため両スティックへ触れないでください。
 
 ## 維持した機能
 
@@ -80,15 +80,18 @@ ESP32有線操作盤を接続した場合はCOMポートを自動検出します
 - FTMS Control Pointの制御権取得、通常勾配0%／Button 6押下中3%、風速0、Cw 0.51 kg/m、P1〜P7のCrr
 - CSC実円盤停止判定、ケイデンス0かつ5 km/h以下の惰性停止
 - SteamVRが左右どちらに割り当てても追跡中のOpenXRグリップを自動選択し、その最初の姿勢を操舵中央として校正
+- Button 1／テンキー0では描画前Late Updateの影響を受けるCamera Component値ではなく、OpenXRの有効な最新HMD姿勢を取得して視界を走行方向へ絶対Yawで整列。姿勢未取得時は最大1秒再試行
 - ホイールベース1.05 m、ゲイン50%、デッドゾーン1.5°、上限±15°
-- 速度10 km/h超の1 km/hにつき高度1 mとなる飛行モード
+- 実測パワーを推進力へ変換する有効質量35 kg、滑空比30、プロペラ効率80%の人力飛行モデル
+- 最良滑空速度24 km/h、離陸20 km/h、失速18 km/h、回復20.5 km/h。失速時は機首が下がり、降下して速度を回復する
+- 飛行中はJoystick 2のYをエルロン（`+Y`左翼下がり、`-Y`右翼下がり）、Xをエレベーター（`+X`機首上げ、`-X`機首下げ）に使い、ハンドルをラダーに使う
 - `SecretWorldRideSurface`タグを持つActorまたはComponentだけを走行面として使う下向きレイキャスト
 - 仮想自転車の正面1.05m（105cm）、中心高1.10mに固定する54×30cmの不透明World Space VR計器。自動車のダッシュボードと同様に進行方向と一緒に動き、頭の向きには追従しない
 - 速度、心拍、時刻、ケイデンス、パワー、距離、周回、高度、モード、XY、P番号、FPS、走行状態の表示
 - BLEエラー、操舵追跡喪失、コース端、飛行切替を短時間だけHMD前方へ表示
 - 固定名`Saved/arrietty_ride.csv`への上書きログ
 
-飛行モードは`Numpad 7`で切り替え、10 km/hを超えた速度1 km/hにつき1 m上昇します。地上モードは`SecretWorldRideSurface`上に制限されますが、飛行モードはコース外へ自由に水平移動できます。コース外では安全のため地上モードへ戻せないので、着陸前にコース上空へ戻ってください。
+飛行モードは`Numpad 7`またはButton 2で有効にします。20 km/h以上でJoystick 2のXを正側へ引くと離陸します。約95 Wで24 km/hの水平飛行となり、それ以上のパワーは上昇へ、少ないパワーは降下へ使われます。エレベーターでさらに上昇すると対気速度を失い、18 km/h未満で失速します。回復はXを負側へ押して機首を下げ、20.5 km/h以上へ戻します。着陸後まで飛行モードは継続し、空中で地上モードへ切り替えることはできません。コース外へ飛べますが、着陸と地上モードへの復帰には`SecretWorldRideSurface`上空へ戻る必要があります。
 
 ## 60 FPS設計
 
@@ -103,7 +106,7 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 - UE 5.8.2 Editor: ビルド成功
 - Win64 Development Game / Shipping: ビルド成功
 - Visual Studio 2026ソリューション: 生成成功（ToolsVersion 18.0）
-- UE Automation: 7テスト成功（ESP32シリアルプロトコル、心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
+- UE Automation: 8テスト成功（人力飛行、ESP32シリアルプロトコル、心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
 - NullRHIゲーム起動: `ArriettyRuntime`、`ArriettyGameMode`、`ArriettyDemo` Levelのロード成功
 - 別名の世界プロジェクト生成、Runtime更新、VS2026 Editorビルド: 成功
 - Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み

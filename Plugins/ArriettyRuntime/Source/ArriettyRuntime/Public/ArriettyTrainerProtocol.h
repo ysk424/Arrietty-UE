@@ -26,10 +26,21 @@ double EffectiveSpeedKmh(
     bool bWheelSignalReceived,
     double LastWheelMotionSeconds,
     double WheelPeriodSeconds);
-double AltitudeForSpeed(double SpeedKmh);
+void InitializeHumanPoweredFlight(FArriettyFlightState& State, double InitialAirspeedKmh = 0.0);
+double HumanPoweredFlightDragNewtons(double AirspeedMetersPerSecond);
+double HumanPoweredLevelFlightPowerWatts(double AirspeedKmh);
+FArriettyFlightStepResult StepHumanPoweredFlight(
+    FArriettyFlightState& State,
+    double RiderPowerWatts,
+    double ElevatorInput,
+    double AileronInput,
+    double RudderDegrees,
+    double DeltaSeconds,
+    bool bCanLand);
 bool RequiresRideSurface(bool bFlightEnabled);
 int32 CompletedLaps(double DistanceMeters, double LapLengthMeters);
 double EffectiveSteeringDegrees(double FilteredRawDegrees);
 double HeadingDegreesForUnrealWorldForward(const FVector2D& WorldForward);
 double YawCorrectionDegrees(const FVector2D& CurrentWorldForward, const FVector2D& TargetWorldForward);
+double HmdOriginYawDegrees(const FVector2D& HmdTrackingForward);
 }
