@@ -7,6 +7,7 @@
 #include "ArriettyAlertWidget.h"
 #include "ArriettyInstrumentWidget.h"
 #include "ArriettyRideLog.h"
+#include "ArriettySerialController.h"
 #include "ArriettyTrainerProtocol.h"
 #include "Async/Async.h"
 #include "Blueprint/UserWidget.h"
@@ -54,6 +55,11 @@ AArriettyPawn::AArriettyPawn()
     RightController->SetupAttachment(VrOrigin);
     RightController->SetTrackingMotionSource(FName(TEXT("RightGrip")));
     RightController->PlayerIndex = 0;
+
+    LeftController = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("Left Controller"));
+    LeftController->SetupAttachment(VrOrigin);
+    LeftController->SetTrackingMotionSource(FName(TEXT("LeftGrip")));
+    LeftController->PlayerIndex = 0;
 
     InstrumentComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("VR Instrument Panel"));
     InstrumentComponent->SetupAttachment(SceneRoot);
@@ -117,6 +123,8 @@ void AArriettyPawn::BeginPlay()
     GroundHeightMeters = InitialWorldLocation.Z / 100.0;
 
     Bluetooth = MakeUnique<FArriettyBluetoothManager>();
+    SerialController = MakeUnique<FArriettySerialController>();
+    SerialController->Start();
     RideLog = MakeUnique<FArriettyRideLog>();
     InstrumentWidget = CreateWidget<UArriettyInstrumentWidget>(
         GetWorld(), UArriettyInstrumentWidget::StaticClass(), TEXT("ArriettyInstrumentWidget"));
@@ -163,12 +171,17 @@ void AArriettyPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
     {
         Bluetooth->StopAndWait();
     }
+    if (SerialController)
+    {
+        SerialController->StopAndWait();
+    }
     Super::EndPlay(EndPlayReason);
 }
 
 void AArriettyPawn::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    PumpControllerEvents();
     PumpBluetoothEvents();
     if (Snapshot.HeartRateBpm.IsSet() &&
         FPlatformTime::Seconds() - LastHeartRateSampleSeconds > Arrietty::HeartRateStaleSeconds)
@@ -301,16 +314,20 @@ void AArriettyPawn::RecenterHmdToBike()
         return;
     }
 
-    // Make the bicycle, its dashboard, and ride motion use the exact horizontal
-    // direction the rider is looking at. Preserve VROrigin in world space while
-    // rotating the Pawn so the rider's view and the road do not rotate during
-    // calibration. This avoids relying on runtime-specific OpenXR recentering.
-    const FTransform VrOriginWorldBeforeAlignment = VrOrigin->GetComponentTransform();
-    Snapshot.HeadingDegrees =
-        ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(HmdWorldForward);
-    StartHeadingDegrees = Snapshot.HeadingDegrees;
+    // The course start or manual setup owns the bicycle heading. Rotate only
+    // the tracking origin so the current HMD forward matches that heading;
+    // never replace the course direction with the direction the rider happened
+    // to be looking when Start was pressed.
     UpdateWorldTransform(false);
-    VrOrigin->SetWorldTransform(VrOriginWorldBeforeAlignment);
+    const FVector BikeWorldForward3D = GetActorForwardVector().GetSafeNormal2D();
+    const FVector2D BikeWorldForward(BikeWorldForward3D.X, BikeWorldForward3D.Y);
+    const double YawCorrectionDegrees = ArriettyTrainerProtocol::YawCorrectionDegrees(
+        HmdWorldForward, BikeWorldForward);
+    VrOrigin->AddWorldRotation(FRotator(0.0, YawCorrectionDegrees, 0.0));
+    UE_LOG(LogArriettyRide, Display,
+        TEXT("View aligned to ride heading %.1f degrees (HMD yaw correction %+.1f degrees)"),
+        Snapshot.HeadingDegrees,
+        YawCorrectionDegrees);
 
     bSteeringCalibrated = false;
     FilteredSteeringDegrees = 0.0;
@@ -321,7 +338,7 @@ void AArriettyPawn::RecenterHmdToBike()
     // new tracking-space steering reference.
     SteeringCalibrationReadyAtSeconds = FPlatformTime::Seconds() + 0.75;
     ResetInstrumentAnchor();
-    Snapshot.Message = TEXT("Bike, dashboard, and motion aligned to HMD forward; keep the handle centered");
+    Snapshot.Message = TEXT("View aligned to the course direction; keep the handle centered");
 }
 
 bool AArriettyPawn::TryStartVrSession()
@@ -406,7 +423,7 @@ void AArriettyPawn::StartRide()
 {
     if (IsRideActive())
     {
-        Snapshot.Message = TEXT("Ride continues until Back to Real World");
+        RecoverTwoMeters();
         return;
     }
     if (!bVrSessionActive)
@@ -436,6 +453,7 @@ void AArriettyPawn::StartRide()
     Snapshot.DistanceMeters = 0.0;
     Snapshot.LapsCompleted = 0;
     Snapshot.AppliedPreset.Reset();
+    Snapshot.AppliedGradePercent = 0.0;
     Snapshot.bFlightEnabled = false;
     Snapshot.AltitudeMeters = 0.0;
     FtmsSpeedKmh = 0.0;
@@ -450,8 +468,11 @@ void AArriettyPawn::StartRide()
     WheelEventTimeTicks.Reset();
     LastWheelMotionSeconds = 0.0;
     WheelPeriodSeconds = 0.0;
+    ResetRecoveryTrail();
     ResetInstrumentAnchor();
-    Bluetooth->Start(Snapshot.SelectedPreset);
+    Bluetooth->Start(
+        Snapshot.SelectedPreset,
+        Snapshot.bBrakeButtonHeld ? Arrietty::BrakeGradePercent : 0.0);
 }
 
 void AArriettyPawn::StopRide(const TCHAR* LogEvent)
@@ -471,6 +492,7 @@ void AArriettyPawn::StopRide(const TCHAR* LogEvent)
     Snapshot.HeartRateStatus = TEXT("DISCONNECTED");
     LastHeartRateSampleSeconds = 0.0;
     Snapshot.bFlightEnabled = false;
+    Snapshot.AppliedGradePercent = 0.0;
     Snapshot.AltitudeMeters = 0.0;
     Snapshot.bSteeringTracking = false;
     bControllerTrackingLossAlerted = false;
@@ -607,6 +629,165 @@ void AArriettyPawn::MoveManual(double Direction)
     UpdateWorldTransform(false);
 }
 
+void AArriettyPawn::PumpControllerEvents()
+{
+    if (!SerialController)
+    {
+        return;
+    }
+
+    FArriettyControllerEvent Event;
+    while (SerialController->DequeueEvent(Event))
+    {
+        switch (Event.Type)
+        {
+        case EArriettyControllerEventType::Status:
+            Snapshot.ControllerStatus = Event.Message;
+            Snapshot.bControllerConnected = false;
+            break;
+        case EArriettyControllerEventType::Connected:
+            Snapshot.ControllerStatus = Event.Message;
+            Snapshot.bControllerConnected = true;
+            bControllerInputInitialized = false;
+            break;
+        case EArriettyControllerEventType::Sample:
+            Snapshot.bControllerConnected = true;
+            HandleControllerSample(Event.Sample);
+            break;
+        case EArriettyControllerEventType::Disconnected:
+            SetBrakeButtonHeld(false);
+            Snapshot.ControllerStatus = Event.Message;
+            Snapshot.bControllerConnected = false;
+            Snapshot.ControllerJoystick1 = FVector2D::ZeroVector;
+            Snapshot.ControllerJoystick2 = FVector2D::ZeroVector;
+            Snapshot.ControllerButtonMask = 0;
+            bControllerInputInitialized = false;
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+void AArriettyPawn::HandleControllerSample(const FArriettyControllerSample& Sample)
+{
+    Snapshot.ControllerJoystick1 = FVector2D(
+        static_cast<double>(Sample.Joystick1X) / 32767.0,
+        static_cast<double>(Sample.Joystick1Y) / 32767.0);
+    Snapshot.ControllerJoystick2 = FVector2D(
+        static_cast<double>(Sample.Joystick2X) / 32767.0,
+        static_cast<double>(Sample.Joystick2Y) / 32767.0);
+    Snapshot.ControllerButtonMask = Sample.ButtonMask;
+
+    if (!bControllerInputInitialized)
+    {
+        PreviousControllerButtonMask = Sample.ButtonMask;
+        bControllerInputInitialized = true;
+        SetBrakeButtonHeld(ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 5));
+        return;
+    }
+
+    const uint8 PressedEdges = static_cast<uint8>(
+        Sample.ButtonMask & static_cast<uint8>(~PreviousControllerButtonMask));
+    const uint8 ChangedButtons = static_cast<uint8>(
+        Sample.ButtonMask ^ PreviousControllerButtonMask);
+    PreviousControllerButtonMask = Sample.ButtonMask;
+
+    if (ArriettyControllerProtocol::IsPressed(ChangedButtons, 5))
+    {
+        SetBrakeButtonHeld(ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 5));
+    }
+    if (ArriettyControllerProtocol::IsPressed(PressedEdges, 0)) StartRide();
+    if (ArriettyControllerProtocol::IsPressed(PressedEdges, 1)) ToggleFlight();
+}
+
+void AArriettyPawn::SetBrakeButtonHeld(bool bHeld)
+{
+    if (Snapshot.bBrakeButtonHeld == bHeld)
+    {
+        return;
+    }
+    Snapshot.bBrakeButtonHeld = bHeld;
+    if (!Bluetooth || !IsRideActive() || Snapshot.Status == EArriettyRideStatus::Stopping)
+    {
+        return;
+    }
+    const double GradePercent = bHeld ? Arrietty::BrakeGradePercent : 0.0;
+    Bluetooth->RequestGrade(GradePercent);
+    Snapshot.ControlStatus = bHeld ? TEXT("SETTING BRAKE") : TEXT("RELEASING BRAKE");
+    Snapshot.ControlMessage = FString::Printf(
+        TEXT("Button 6 %s: requesting grade %.1f%%"),
+        bHeld ? TEXT("held") : TEXT("released"),
+        GradePercent);
+}
+
+void AArriettyPawn::ResetRecoveryTrail()
+{
+    RecoveryTrail.Reset();
+    RecoveryPathDistanceMeters = 0.0;
+    LastRecordedRecoveryDistanceMeters = 0.0;
+    RecoveryTrail.Add({
+        Snapshot.PositionMeters,
+        Snapshot.HeadingDegrees,
+        GroundHeightMeters,
+        0.0});
+}
+
+void AArriettyPawn::RecordRecoveryPose(double AdvanceMeters)
+{
+    RecoveryPathDistanceMeters += FMath::Max(0.0, AdvanceMeters);
+    constexpr double RecoverySampleSpacingMeters = 0.10;
+    if (RecoveryPathDistanceMeters - LastRecordedRecoveryDistanceMeters < RecoverySampleSpacingMeters)
+    {
+        return;
+    }
+    RecoveryTrail.Add({
+        Snapshot.PositionMeters,
+        Snapshot.HeadingDegrees,
+        GroundHeightMeters,
+        RecoveryPathDistanceMeters});
+    LastRecordedRecoveryDistanceMeters = RecoveryPathDistanceMeters;
+
+    constexpr int32 MaxRecoveryPoses = 256;
+    if (RecoveryTrail.Num() > MaxRecoveryPoses)
+    {
+        RecoveryTrail.RemoveAt(0, RecoveryTrail.Num() - MaxRecoveryPoses, EAllowShrinking::No);
+    }
+}
+
+void AArriettyPawn::RecoverTwoMeters()
+{
+    if (RecoveryTrail.IsEmpty())
+    {
+        ResetRecoveryTrail();
+    }
+    const double TargetPathDistance = FMath::Max(0.0, RecoveryPathDistanceMeters - 2.0);
+    const FRecoveryPose* TargetPose = &RecoveryTrail[0];
+    for (const FRecoveryPose& Pose : RecoveryTrail)
+    {
+        if (Pose.PathDistanceMeters > TargetPathDistance)
+        {
+            break;
+        }
+        TargetPose = &Pose;
+    }
+
+    const double RecoveredMeters = FMath::Max(
+        0.0, RecoveryPathDistanceMeters - TargetPose->PathDistanceMeters);
+    Snapshot.PositionMeters = TargetPose->PositionMeters;
+    Snapshot.HeadingDegrees = TargetPose->HeadingDegrees;
+    GroundHeightMeters = TargetPose->GroundHeightMeters;
+    StartPositionMeters = Snapshot.PositionMeters;
+    StartHeadingDegrees = Snapshot.HeadingDegrees;
+    ResetRecoveryTrail();
+    UpdateWorldTransform(false);
+    Snapshot.Message = FString::Printf(
+        TEXT("Safety return: moved %.1f m back along the ridden path"),
+        RecoveredMeters);
+    ShowVrAlert(FString::Printf(TEXT("SAFETY RETURN\n%.1f m BACK"), RecoveredMeters), 2.5);
+    RecordTelemetry(TEXT("SAFETY_RETURN"));
+}
+
 void AArriettyPawn::PumpBluetoothEvents()
 {
     if (!Bluetooth)
@@ -631,12 +812,15 @@ void AArriettyPawn::PumpBluetoothEvents()
             break;
         case EArriettyBluetoothEventType::ControlReady:
             Snapshot.AppliedPreset = Event.PresetIndex;
-            Snapshot.ControlStatus = FString::Printf(TEXT("FLAT P%d"), Event.PresetIndex);
+            Snapshot.AppliedGradePercent = Event.GradePercent;
+            Snapshot.ControlStatus = Event.GradePercent > 0.0
+                ? FString::Printf(TEXT("BRAKE %.1f%% P%d"), Event.GradePercent, Event.PresetIndex)
+                : FString::Printf(TEXT("FLAT P%d"), Event.PresetIndex);
             if (const FArriettyControlPreset* Preset = ArriettyTrainerProtocol::FindPreset(Event.PresetIndex))
             {
                 Snapshot.ControlMessage = FString::Printf(
-                    TEXT("P%d %s: grade 0%%; Crr %.4f; Cw 0.51 kg/m"),
-                    Preset->Index, Preset->Label, Preset->RollingResistance);
+                    TEXT("P%d %s: grade %.1f%%; Crr %.4f; Cw 0.51 kg/m"),
+                    Preset->Index, Preset->Label, Event.GradePercent, Preset->RollingResistance);
             }
             break;
         case EArriettyBluetoothEventType::TrainerSample:
@@ -678,6 +862,7 @@ void AArriettyPawn::PumpBluetoothEvents()
             Snapshot.SpeedKmh = 0.0;
             Snapshot.FtmsSpeedKmh = 0.0;
             Snapshot.AppliedPreset.Reset();
+            Snapshot.AppliedGradePercent = 0.0;
             Snapshot.bFlightEnabled = false;
             Snapshot.AltitudeMeters = 0.0;
             ShowVrAlert(FString::Printf(TEXT("BLUETOOTH ERROR\n%s"), *Event.Message), 5.0);
@@ -692,6 +877,7 @@ void AArriettyPawn::PumpBluetoothEvents()
                 Snapshot.ControlMessage = FString::Printf(
                     TEXT("P%d selected for the next ride"), Snapshot.SelectedPreset);
                 Snapshot.AppliedPreset.Reset();
+                Snapshot.AppliedGradePercent = 0.0;
             }
             break;
         default:
@@ -733,24 +919,59 @@ void AArriettyPawn::HandleCscSample(double ReceivedAtSeconds, const FArriettyCsc
     LastWheelMotionSeconds = ReceivedAtSeconds;
 }
 
+UMotionControllerComponent* AArriettyPawn::ResolveSteeringController()
+{
+    if (ActiveSteeringController && ActiveSteeringController->IsTracked())
+    {
+        return ActiveSteeringController;
+    }
+
+    UMotionControllerComponent* TrackedController = nullptr;
+    if (RightController && RightController->IsTracked())
+    {
+        TrackedController = RightController;
+    }
+    else if (LeftController && LeftController->IsTracked())
+    {
+        TrackedController = LeftController;
+    }
+
+    if (TrackedController != ActiveSteeringController)
+    {
+        ActiveSteeringController = TrackedController;
+        bSteeringCalibrated = false;
+        FilteredSteeringDegrees = 0.0;
+        Snapshot.SteeringSource = TrackedController
+            ? TrackedController->GetTrackingMotionSource().ToString()
+            : TEXT("NONE");
+        if (TrackedController)
+        {
+            UE_LOG(LogArriettyRide, Display, TEXT("Steering controller selected: %s"),
+                *Snapshot.SteeringSource);
+        }
+    }
+    return TrackedController;
+}
+
 void AArriettyPawn::UpdateSteering()
 {
     if (!IsRideActive() || Snapshot.Status == EArriettyRideStatus::Stopping)
     {
         Snapshot.bSteeringTracking = false;
+        Snapshot.SteeringSource = TEXT("NONE");
         Snapshot.RawSteeringDegrees = 0.0;
         Snapshot.EffectiveSteeringDegrees = 0.0;
         return;
     }
-    const bool bTracked = RightController && RightController->IsTracked();
-    if (!bTracked)
+    UMotionControllerComponent* SteeringController = ResolveSteeringController();
+    if (!SteeringController)
     {
         Snapshot.bSteeringTracking = false;
         Snapshot.RawSteeringDegrees = 0.0;
         Snapshot.EffectiveSteeringDegrees = 0.0;
         if (Snapshot.Status == EArriettyRideStatus::Riding)
         {
-            Snapshot.Message = TEXT("Ride paused; right controller tracking was lost");
+            Snapshot.Message = TEXT("Ride paused; steering controller tracking was lost");
             if (!bControllerTrackingLossAlerted)
             {
                 bControllerTrackingLossAlerted = true;
@@ -781,7 +1002,7 @@ void AArriettyPawn::UpdateSteering()
 
     // Steering is measured in tracking-space. A world-space rotation would feed
     // the bicycle's own turn back into the controller angle on the next frame.
-    const FQuat Current = RightController->GetRelativeRotation().Quaternion();
+    const FQuat Current = SteeringController->GetRelativeRotation().Quaternion();
     if (!bSteeringCalibrated)
     {
         SteeringBaseline = Current;
@@ -796,9 +1017,9 @@ void AArriettyPawn::UpdateSteering()
     }
     Snapshot.RawSteeringDegrees = FilteredSteeringDegrees;
     Snapshot.EffectiveSteeringDegrees = ArriettyTrainerProtocol::EffectiveSteeringDegrees(FilteredSteeringDegrees);
-    if (Snapshot.Status == EArriettyRideStatus::Riding && Snapshot.Message.StartsWith(TEXT("Ride paused; right controller")))
+    if (Snapshot.Status == EArriettyRideStatus::Riding && Snapshot.Message.StartsWith(TEXT("Ride paused; steering controller")))
     {
-        Snapshot.Message = TEXT("Right controller recovered; steering is active");
+        Snapshot.Message = TEXT("Steering controller recovered; steering is active");
     }
 }
 
@@ -809,14 +1030,16 @@ void AArriettyPawn::MaybeBeginRiding()
         if (bTrainerSignalReceived && Snapshot.Status != EArriettyRideStatus::Riding)
         {
             Snapshot.Status = EArriettyRideStatus::WaitingSteering;
-            Snapshot.Message = TEXT("T2 received; waiting for the right controller");
+            Snapshot.Message = TEXT("T2 received; waiting for the steering controller");
         }
         return;
     }
     if (Snapshot.Status != EArriettyRideStatus::Riding)
     {
         Snapshot.Status = EArriettyRideStatus::Riding;
-        Snapshot.Message = TEXT("T2 and right controller received; steering is active");
+        Snapshot.Message = FString::Printf(
+            TEXT("T2 and %s received; steering is active"),
+            *Snapshot.SteeringSource);
         PlayStartSound();
     }
 }
@@ -895,6 +1118,7 @@ void AArriettyPawn::AdvanceRide(float DeltaSeconds)
         Snapshot.HeadingDegrees + FMath::RadiansToDegrees(TurnRadians));
     Snapshot.LapsCompleted = ArriettyTrainerProtocol::CompletedLaps(
         Snapshot.DistanceMeters, LapLengthMeters);
+    RecordRecoveryPose(AdvanceMeters);
     UpdateWorldTransform(false);
 }
 
@@ -998,8 +1222,8 @@ void AArriettyPawn::ResetInstrumentAnchor()
         InstrumentAnchorStatus = TEXT("ERROR - Instrument widget creation failed");
         return;
     }
-    InstrumentAnchorLocalCentimeters = FVector(75.0, 0.0, 100.0);
-    InstrumentAnchorStatus = TEXT("FIXED VIRTUAL BIKE - Forward 0.75 m, panel center height 1.10 m");
+    InstrumentAnchorLocalCentimeters = FVector(105.0, 0.0, 100.0);
+    InstrumentAnchorStatus = TEXT("FIXED VIRTUAL BIKE - Forward 1.05 m, panel center height 1.10 m");
 }
 
 void AArriettyPawn::UpdateInstrumentAnchor()

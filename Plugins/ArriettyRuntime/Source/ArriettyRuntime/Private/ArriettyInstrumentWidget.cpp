@@ -153,7 +153,7 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
         ? Snapshot.AppliedPreset.GetValue()
         : Snapshot.SelectedPreset;
     RideDataText->SetText(FText::FromString(FString::Printf(
-        TEXT("CAD %3.0f rpm    PWR %4d W\nDIST %s  LAP %4d\nALT %5.1f m   %s P%d   FPS %4.1f"),
+        TEXT("CAD %3.0f rpm    PWR %4d W\nDIST %s  LAP %4d\nALT %5.1f m   %s P%d  BRK %.1f%%  FPS %4.1f"),
         Snapshot.CadenceRpm,
         Snapshot.PowerWatts,
         *Distance,
@@ -161,6 +161,7 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
         Snapshot.AltitudeMeters,
         Snapshot.bFlightEnabled ? TEXT("FLIGHT") : TEXT("GROUND"),
         Preset,
+        Snapshot.AppliedGradePercent,
         Snapshot.AverageFps)));
     PositionText->SetText(FText::FromString(FString::Printf(
         TEXT("X %+.1f   Y %+.1f m"), Snapshot.PositionMeters.X, Snapshot.PositionMeters.Y)));

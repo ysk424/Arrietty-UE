@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "ArriettyBluetoothManager.h"
+#include "ArriettySerialController.h"
 #include "ArriettyRideLog.h"
 #include "GameFramework/Pawn.h"
 #include "ArriettyTypes.h"
@@ -74,7 +75,14 @@ private:
     void ActivateVrSession();
     void InitializeVrAtStartup();
     void PumpBluetoothEvents();
+    void PumpControllerEvents();
+    void HandleControllerSample(const FArriettyControllerSample& Sample);
+    void SetBrakeButtonHeld(bool bHeld);
+    void RecoverTwoMeters();
+    void ResetRecoveryTrail();
+    void RecordRecoveryPose(double AdvanceMeters);
     void HandleCscSample(double ReceivedAtSeconds, const FArriettyCscSample& Sample);
+    UMotionControllerComponent* ResolveSteeringController();
     void UpdateSteering();
     void MaybeBeginRiding();
     void AdvanceRide(float DeltaSeconds);
@@ -113,6 +121,12 @@ private:
     TObjectPtr<UMotionControllerComponent> RightController;
 
     UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UMotionControllerComponent> LeftController;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UMotionControllerComponent> ActiveSteeringController;
+
+    UPROPERTY(VisibleAnywhere)
     TObjectPtr<UWidgetComponent> InstrumentComponent;
 
     UPROPERTY(VisibleAnywhere)
@@ -125,6 +139,7 @@ private:
     TObjectPtr<UArriettyAlertWidget> AlertWidget;
 
     TUniquePtr<FArriettyBluetoothManager> Bluetooth;
+    TUniquePtr<FArriettySerialController> SerialController;
     TUniquePtr<FArriettyRideLog> RideLog;
     FArriettyRideSnapshot Snapshot;
 
@@ -139,6 +154,18 @@ private:
     double PanelScale = 1.0;
 
     bool bVrSessionActive = false;
+    bool bControllerInputInitialized = false;
+    uint8 PreviousControllerButtonMask = 0;
+    struct FRecoveryPose
+    {
+        FVector2D PositionMeters = FVector2D::ZeroVector;
+        double HeadingDegrees = 0.0;
+        double GroundHeightMeters = 0.0;
+        double PathDistanceMeters = 0.0;
+    };
+    TArray<FRecoveryPose> RecoveryTrail;
+    double RecoveryPathDistanceMeters = 0.0;
+    double LastRecordedRecoveryDistanceMeters = 0.0;
     int32 VrStartupAttempts = 0;
     FTimerHandle VrStartupRetryTimer;
     bool bInstrumentVisible = false;
@@ -149,7 +176,7 @@ private:
     bool bControllerTrackingLossAlerted = false;
     FQuat SteeringBaseline = FQuat::Identity;
     double FilteredSteeringDegrees = 0.0;
-    FVector InstrumentAnchorLocalCentimeters = FVector(75.0, 0.0, 100.0);
+    FVector InstrumentAnchorLocalCentimeters = FVector(105.0, 0.0, 100.0);
     FString InstrumentAnchorStatus = TEXT("HIDDEN - Instrument panel is hidden");
     double AlertVisibleUntilSeconds = 0.0;
 

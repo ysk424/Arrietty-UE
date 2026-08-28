@@ -37,15 +37,15 @@ FArriettyBluetoothManager::~FArriettyBluetoothManager()
     StopAndWait();
 }
 
-void FArriettyBluetoothManager::Start(int32 InitialPresetIndex)
+void FArriettyBluetoothManager::Start(int32 InitialPresetIndex, double InitialGradePercent)
 {
     StopAndWait();
     FArriettyBluetoothEvent Discarded;
     while (Events.Dequeue(Discarded))
     {
     }
-    TPair<int32, int32> DiscardedRequest;
-    while (PresetRequests.Dequeue(DiscardedRequest))
+    FControlRequest DiscardedRequest;
+    while (ControlRequests.Dequeue(DiscardedRequest))
     {
     }
 
@@ -53,9 +53,9 @@ void FArriettyBluetoothManager::Start(int32 InitialPresetIndex)
     Generation.Store(WorkerGeneration);
     bStopRequested.Store(false);
     bWorkerRunning.Store(true);
-    WorkerFuture = Async(EAsyncExecution::Thread, [this, WorkerGeneration, InitialPresetIndex]
+    WorkerFuture = Async(EAsyncExecution::Thread, [this, WorkerGeneration, InitialPresetIndex, InitialGradePercent]
     {
-        WorkerMain(WorkerGeneration, InitialPresetIndex);
+        WorkerMain(WorkerGeneration, InitialPresetIndex, InitialGradePercent);
     });
 }
 
@@ -77,7 +77,18 @@ void FArriettyBluetoothManager::StopAndWait()
 
 void FArriettyBluetoothManager::RequestPreset(int32 PresetIndex)
 {
-    PresetRequests.Enqueue(TPair<int32, int32>(Generation.Load(), PresetIndex));
+    FControlRequest Request;
+    Request.Generation = Generation.Load();
+    Request.PresetIndex = PresetIndex;
+    ControlRequests.Enqueue(MoveTemp(Request));
+}
+
+void FArriettyBluetoothManager::RequestGrade(double GradePercent)
+{
+    FControlRequest Request;
+    Request.Generation = Generation.Load();
+    Request.GradePercent = GradePercent;
+    ControlRequests.Enqueue(MoveTemp(Request));
 }
 
 bool FArriettyBluetoothManager::DequeueEvent(FArriettyBluetoothEvent& OutEvent)
@@ -113,7 +124,10 @@ void FArriettyBluetoothManager::QueueError(int32 WorkerGeneration, const FString
     QueueEvent(MoveTemp(Event));
 }
 
-void FArriettyBluetoothManager::WorkerMain(int32 WorkerGeneration, int32 InitialPresetIndex)
+void FArriettyBluetoothManager::WorkerMain(
+    int32 WorkerGeneration,
+    int32 InitialPresetIndex,
+    double InitialGradePercent)
 {
 #if !ARRIETTY_WINDOWS_BLE
     QueueError(WorkerGeneration, TEXT("CYCPLUS T2 support currently requires Windows"));
@@ -318,12 +332,16 @@ void FArriettyBluetoothManager::WorkerMain(int32 WorkerGeneration, int32 Initial
         };
 
         SendControlCommand(TArray<uint8>{0x00});
-        SendControlCommand(ArriettyTrainerProtocol::BuildFlatRoadControlCommand(InitialPresetIndex));
+        int32 CurrentPresetIndex = InitialPresetIndex;
+        double CurrentGradePercent = InitialGradePercent;
+        SendControlCommand(ArriettyTrainerProtocol::BuildSimulationControlCommand(
+            CurrentPresetIndex, CurrentGradePercent));
         {
             FArriettyBluetoothEvent Event;
             Event.Generation = WorkerGeneration;
             Event.Type = EArriettyBluetoothEventType::ControlReady;
-            Event.PresetIndex = InitialPresetIndex;
+            Event.PresetIndex = CurrentPresetIndex;
+            Event.GradePercent = CurrentGradePercent;
             QueueEvent(MoveTemp(Event));
         }
 
@@ -503,22 +521,33 @@ void FArriettyBluetoothManager::WorkerMain(int32 WorkerGeneration, int32 Initial
 
         while (!bStopRequested.Load() && Device.ConnectionStatus() == BluetoothConnectionStatus::Connected)
         {
-            TPair<int32, int32> Request;
-            TOptional<int32> LatestPreset;
-            while (PresetRequests.Dequeue(Request))
+            FControlRequest Request;
+            bool bControlChanged = false;
+            while (ControlRequests.Dequeue(Request))
             {
-                if (Request.Key == WorkerGeneration)
+                if (Request.Generation == WorkerGeneration)
                 {
-                    LatestPreset = Request.Value;
+                    if (Request.PresetIndex.IsSet())
+                    {
+                        CurrentPresetIndex = Request.PresetIndex.GetValue();
+                        bControlChanged = true;
+                    }
+                    if (Request.GradePercent.IsSet())
+                    {
+                        CurrentGradePercent = Request.GradePercent.GetValue();
+                        bControlChanged = true;
+                    }
                 }
             }
-            if (LatestPreset.IsSet())
+            if (bControlChanged)
             {
-                SendControlCommand(ArriettyTrainerProtocol::BuildFlatRoadControlCommand(LatestPreset.GetValue()));
+                SendControlCommand(ArriettyTrainerProtocol::BuildSimulationControlCommand(
+                    CurrentPresetIndex, CurrentGradePercent));
                 FArriettyBluetoothEvent Event;
                 Event.Generation = WorkerGeneration;
                 Event.Type = EArriettyBluetoothEventType::ControlReady;
-                Event.PresetIndex = LatestPreset.GetValue();
+                Event.PresetIndex = CurrentPresetIndex;
+                Event.GradePercent = CurrentGradePercent;
                 QueueEvent(MoveTemp(Event));
             }
             if (bHeartRateEnabled && !bHeartRateDisconnectReported &&

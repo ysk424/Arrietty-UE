@@ -89,6 +89,14 @@ bool FArriettyControlCommandsTest::RunTest(const FString& Parameters)
             ArriettyTrainerProtocol::BuildFlatRoadControlCommand(PresetIndex),
             Expected[PresetIndex - 1]);
     }
+    TestEqual(
+        TEXT("P5 brake grade 3 percent"),
+        ArriettyTrainerProtocol::BuildSimulationControlCommand(5, 3.0),
+        TArray<uint8>({0x11, 0, 0, 0x2c, 0x01, 0xc8, 0x33}));
+    TestEqual(
+        TEXT("P5 released brake returns to grade zero"),
+        ArriettyTrainerProtocol::BuildSimulationControlCommand(5, 0.0),
+        Expected[4]);
     const TArray<uint8> Success = {0x80, 0x00, 0x01};
     const TArray<uint8> OtherOpcode = {0x80, 0x11, 0x01};
     TestEqual(TEXT("Control success"), ArriettyTrainerProtocol::ParseControlResponse(Success, 0x00).Get(0), static_cast<uint8>(1));
@@ -128,6 +136,15 @@ bool FArriettyRideMathTest::RunTest(const FString& Parameters)
         ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(FVector2D(0.0, 1.0)), -90.0);
     TestTrue(TEXT("Unreal X=Y is ride heading -45"), FMath::IsNearlyEqual(
         ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(FVector2D(1.0, 1.0)), -45.0));
+    TestEqual(TEXT("View +X rotates 90 degrees to course +Y"),
+        ArriettyTrainerProtocol::YawCorrectionDegrees(FVector2D(1.0, 0.0), FVector2D(0.0, 1.0)),
+        90.0);
+    TestEqual(TEXT("View +Y rotates -90 degrees to course +X"),
+        ArriettyTrainerProtocol::YawCorrectionDegrees(FVector2D(0.0, 1.0), FVector2D(1.0, 0.0)),
+        -90.0);
+    TestEqual(TEXT("Aligned view needs no correction"),
+        ArriettyTrainerProtocol::YawCorrectionDegrees(FVector2D(1.0, 0.0), FVector2D(1.0, 0.0)),
+        0.0);
     return true;
 }
 

@@ -83,6 +83,9 @@ void UArriettyControlWidget::NativeConstruct()
     UButton* ExitButton = AddButton(Root, TEXT("Exit Arrietty (Esc)"), ExitButtonLabel);
     ExitButton->OnClicked.AddDynamic(this, &UArriettyControlWidget::OnExitApplication);
 
+    AddSectionTitle(WidgetTree, Root, TEXT("ESP32 Wired Controller"));
+    ControllerStatusText = AddText(Root, TEXT("SEARCHING: USB controller"), 13, FLinearColor(0.55f, 0.75f, 0.9f));
+
     AddSectionTitle(WidgetTree, Root, TEXT("Start Pose"));
     StartPoseText = AddText(Root, TEXT("X 0.00 m   Y -320.00 m   Z 1.50 m"));
     AddText(Root, TEXT("Numpad 8 / 2: Forward / Back"), 13, FLinearColor(0.75f, 0.8f, 0.85f));
@@ -156,9 +159,9 @@ void UArriettyControlWidget::NativeConstruct()
     Height->OnValueChanged.AddDynamic(this, &UArriettyControlWidget::OnPanelHeightChanged);
     Scale->OnValueChanged.AddDynamic(this, &UArriettyControlWidget::OnPanelScaleChanged);
 
-    AddSectionTitle(WidgetTree, Root, TEXT("Right Controller Steering"));
+    AddSectionTitle(WidgetTree, Root, TEXT("Steering Controller (Left/Right Auto)"));
     SteeringStatusText = AddText(Root, TEXT("Status: IDLE"), 13);
-    AddText(Root, FString::Printf(TEXT("ID: %s"), Arrietty::RightControllerSerial), 12, FLinearColor(0.7f, 0.75f, 0.8f));
+    AddText(Root, FString::Printf(TEXT("ID: %s"), Arrietty::SteeringControllerSerial), 12, FLinearColor(0.7f, 0.75f, 0.8f));
     PerformanceText = AddText(Root, TEXT("Performance: 60.0 FPS (target 60)"), 13, FLinearColor(0.25f, 1.0f, 0.40f));
 
     Refresh();
@@ -251,6 +254,19 @@ void UArriettyControlWidget::Refresh()
     VrButtonLabel->SetText(FText::FromString(
         Pawn->IsVrSessionActive() ? TEXT("Back to Real World") : TEXT("Dive into Secret World")));
     VrStatusText->SetText(FText::FromString(Pawn->GetVrStatusText()));
+    ControllerStatusText->SetText(FText::FromString(FString::Printf(
+        TEXT("%s\nJ1 X %+.2f  Y %+.2f   J2 X %+.2f  Y %+.2f   Buttons 0x%02X   B6 %s"),
+        *State.ControllerStatus,
+        State.ControllerJoystick1.X,
+        State.ControllerJoystick1.Y,
+        State.ControllerJoystick2.X,
+        State.ControllerJoystick2.Y,
+        State.ControllerButtonMask,
+        State.bBrakeButtonHeld ? TEXT("BRAKE") : TEXT("released"))));
+    ControllerStatusText->SetColorAndOpacity(FSlateColor(
+        State.bControllerConnected
+            ? FLinearColor(0.25f, 1.0f, 0.40f)
+            : FLinearColor(1.0f, 0.65f, 0.15f)));
     StartPoseText->SetText(FText::FromString(FString::Printf(
         TEXT("X %.2f m   Y %.2f m   Z %.2f m\nDirection %.1f degrees"),
         State.PositionMeters.X,
@@ -299,8 +315,9 @@ void UArriettyControlWidget::Refresh()
     InstrumentStatusText->SetText(FText::FromString(FString::Printf(
         TEXT("Anchor: %s"), *Pawn->GetInstrumentAnchorStatus())));
     SteeringStatusText->SetText(FText::FromString(FString::Printf(
-        TEXT("Status: %s\nRaw %+.1f degrees   Applied %+.1f degrees"),
+        TEXT("Status: %s   Source: %s\nRaw %+.1f degrees   Applied %+.1f degrees"),
         State.bSteeringTracking ? TEXT("TRACKING") : TEXT("IDLE / LOST"),
+        *State.SteeringSource,
         State.RawSteeringDegrees,
         State.EffectiveSteeringDegrees)));
     const bool bAtTarget = State.AverageFps >= 59.5;

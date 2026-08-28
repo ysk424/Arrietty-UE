@@ -52,6 +52,7 @@ private:
 
     UPROPERTY() TObjectPtr<UTextBlock> VrButtonLabel;
     UPROPERTY() TObjectPtr<UTextBlock> VrStatusText;
+    UPROPERTY() TObjectPtr<UTextBlock> ControllerStatusText;
     UPROPERTY() TObjectPtr<UTextBlock> StartPoseText;
     UPROPERTY() TObjectPtr<UTextBlock> HmdForwardText;
     UPROPERTY() TObjectPtr<UTextBlock> RideButtonLabel;

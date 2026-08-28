@@ -1,6 +1,6 @@
 # Arrietty
 
-Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定した右VIVEコントローラーを使い、Unreal EngineのLevel内を走行・飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.8.0です。
+Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定したVIVEコントローラーを使い、Unreal EngineのLevel内を走行・飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.8.0です。
 
 ## 確認済み開発環境
 
@@ -53,35 +53,37 @@ pwsh -File .\Tools\Update-ArriettyWorldProject.ps1 `
 ## 操作
 
 1. SteamVRを起動し、SteamVRをアクティブなOpenXRランタイムにします。UE Editorでは走行するLevelを開き、Playメニューから`VR Preview`を選びます。
-2. HMDと右VIVEコントローラーを接続します。心拍計を使う場合は、標準BLE Heart Rate Service対応センサーも装着して広告状態にします。
+2. HMDとステム上のVIVEコントローラーを接続します。SteamVRが左／右のどちらに割り当ててもArriettyが追跡中の側を自動選択します。心拍計を使う場合は、標準BLE Heart Rate Service対応センサーも装着して広告状態にします。
 3. Arriettyを起動するとOpenXR VRが自動的に開始します。開始しない場合は、画面のVR状態を確認して`Dive into Secret World`を押します。
 4. テンキー`4`/`6`で開始方向、`8`/`2`で開始位置を合わせます。
 5. T2を数回漕いで起こします。
-6. HMDで自転車の正面を向き、ハンドルを中央に保ってテンキー`0`または`Start Ride`を押します。この時点のHMD正面を自転車正面として再センターします。OpenXR座標が安定してから操舵中央を記録するため、押した後も約1秒はハンドルを中央に保ちます。
+6. ハンドルを中央に保ってテンキー`0`または`Start Ride`を押します。仮想自転車の進行方向はHMDの向きで上書きせず、`ArriettyCourseStart`の赤いX方向を維持し、HMDの仮想視界をその走行方向へ合わせます。OpenXR座標が安定してから操舵中央を記録するため、押した後も約1秒はハンドルを中央に保ちます。
 7. 開始音の後に走行します。VRから戻る操作は`Back to Real World`です。`VR Preview`では`Esc`または`Exit Arrietty`でPlayを終了してUE Editorへ戻ります。パッケージ版ではArriettyのプロセスを終了します。
 
 キー割り当ては従来版と同じです。
 
 - `Numpad 8` / `2`: HMD正面へ前進 / 後退
 - `Numpad 4` / `6`: 左 / 右旋回
-- `Numpad 0`: T2接続と走行開始。走行中の再押下では止まりません
+- `Numpad 0`: T2接続と走行開始。走行中の再押下は走行軌跡を約2 m戻る安全復帰
 - `Numpad 7`: 地上 / 飛行モード
 - `Numpad 1` / `3` / `5` / `9`: P1 / P2 / P3 / P4
 - `Numpad +` / `-`: P5〜P7を含む抵抗プリセットの上下移動
-- `Numpad .`: 現在向いているHMD方向を自転車正面として再調整
+- `Numpad .`: 自転車の走行方向を変えず、現在のHMD仮想視界を走行方向へ再調整
 - `Esc`: ログとT2接続を終了する。VR PreviewではEditorへ戻り、パッケージ版ではArriettyを閉じる
+
+ESP32有線操作盤を接続した場合はCOMポートを自動検出します。Button 1は走行開始／開始後の約2 m安全復帰、Button 2は地上・飛行モード、Button 6は押下中だけT2へ3%上り勾配を送るブレーキです。Button 3〜5と2台のジョイスティックのX/Y/SWは受信・表示のみで、ゲーム内用途はまだ割り当てていません。USB接続直後の約1秒は中央校正のため両スティックへ触れないでください。
 
 ## 維持した機能
 
 - T2のFTMS Indoor Bike Data通知による速度・ケイデンス・パワー
 - 標準BLE Heart Rate Service `0x180D`／Heart Rate Measurement `0x2A37`による心拍数。見つからない場合もT2走行は継続
-- FTMS Control Pointの制御権取得、勾配0%、風速0、Cw 0.51 kg/m、P1〜P7のCrr
+- FTMS Control Pointの制御権取得、通常勾配0%／Button 6押下中3%、風速0、Cw 0.51 kg/m、P1〜P7のCrr
 - CSC実円盤停止判定、ケイデンス0かつ5 km/h以下の惰性停止
-- 右OpenXRグリップの最初の姿勢を操舵中央として校正
+- SteamVRが左右どちらに割り当てても追跡中のOpenXRグリップを自動選択し、その最初の姿勢を操舵中央として校正
 - ホイールベース1.05 m、ゲイン50%、デッドゾーン1.5°、上限±15°
 - 速度10 km/h超の1 km/hにつき高度1 mとなる飛行モード
 - `SecretWorldRideSurface`タグを持つActorまたはComponentだけを走行面として使う下向きレイキャスト
-- 仮想自転車の正面0.75m、中心高1.10mに固定する54×30cmの不透明World Space VR計器。自動車のダッシュボードと同様に進行方向と一緒に動き、頭の向きには追従しない
+- 仮想自転車の正面1.05m（105cm）、中心高1.10mに固定する54×30cmの不透明World Space VR計器。自動車のダッシュボードと同様に進行方向と一緒に動き、頭の向きには追従しない
 - 速度、心拍、時刻、ケイデンス、パワー、距離、周回、高度、モード、XY、P番号、FPS、走行状態の表示
 - BLEエラー、操舵追跡喪失、コース端、飛行切替を短時間だけHMD前方へ表示
 - 固定名`Saved/arrietty_ride.csv`への上書きログ
@@ -101,15 +103,16 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 - UE 5.8.2 Editor: ビルド成功
 - Win64 Development Game / Shipping: ビルド成功
 - Visual Studio 2026ソリューション: 生成成功（ToolsVersion 18.0）
-- UE Automation: 6テスト成功（心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
+- UE Automation: 7テスト成功（ESP32シリアルプロトコル、心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
 - NullRHIゲーム起動: `ArriettyRuntime`、`ArriettyGameMode`、`ArriettyDemo` Levelのロード成功
 - 別名の世界プロジェクト生成、Runtime更新、VS2026 Editorビルド: 成功
 - Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み
-- T2、HMD、右コントローラーを組み合わせた実機走行: 起動、正面整合、直進、Esc終了を確認済み（2026-08-27）
+- T2、HMD、VIVEコントローラー、ESP32操作盤の統合実走: `RightGrip`自動選択、開始Heading 0°、809.223 m走行、飛行、3%ブレーキと0%解除、Button 1の2.01 m安全復帰、Esc終了を確認済み（2026-08-28）
+- ESP32有線操作盤: 完成版書き込み、CLI 50 Hz通信、UEのCOM7自動検出・接続を確認済み（2026-08-28）
 
 実機試験は[`docs/ACCEPTANCE_TEST.md`](docs/ACCEPTANCE_TEST.md)に沿って行います。
 
-ESP32、6個の押しボタン、2軸ジョイスティックを使う自転車操作盤の設計案は[`docs/HARDWARE_CONTROLS.md`](docs/HARDWARE_CONTROLS.md)、次回の再開地点は[`docs/NEXT_SESSION.md`](docs/NEXT_SESSION.md)に記録しています。
+ESP32、6個の押しボタン、2個のXYジョイスティックを使うUSB有線操作盤の実配線、座標、通信仕様、CLI操作は[`docs/HARDWARE_CONTROLS.md`](docs/HARDWARE_CONTROLS.md)に記録しています。ファームウェアは[`Hardware/ArriettyController`](Hardware/ArriettyController)にあります。
 
 ## ライセンス
 

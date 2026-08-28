@@ -25,7 +25,7 @@ bool FArriettyRideLog::Start()
         return false;
     }
     StartedAtSeconds = FPlatformTime::Seconds();
-    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,power_w,heart_rate_bpm,distance_m,laps_completed,flight_mode,altitude_m,target_altitude_m,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset\r\n"));
+    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,power_w,heart_rate_bpm,distance_m,laps_completed,flight_mode,altitude_m,target_altitude_m,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset,brake_button_held,trainer_grade_percent,steering_source\r\n"));
     FArriettyRideSnapshot Empty;
     Record(TEXT("START"), Empty, 0.0, {}, {}, false, false);
     return true;
@@ -56,7 +56,7 @@ void FArriettyRideLog::Record(
         ? FMath::Max(0.0, Snapshot.SpeedKmh - Arrietty::TakeoffSpeedKmh)
         : 0.0;
     WriteUtf8(FString::Printf(
-        TEXT("%s,%.3f,%s,%.2f,%.2f,%.1f,%d,%s,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s,%s,%d,%d,%s,%s\r\n"),
+        TEXT("%s,%.3f,%s,%.2f,%.2f,%.1f,%d,%s,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s,%s,%d,%d,%s,%s,%d,%.1f,%s\r\n"),
         *Timestamp,
         FPlatformTime::Seconds() - StartedAtSeconds,
         Event,
@@ -83,7 +83,10 @@ void FArriettyRideLog::Record(
         bWheelStopped ? 1 : 0,
         bLowSpeedCoastStopped ? 1 : 0,
         *Snapshot.ControlStatus,
-        *Preset));
+        *Preset,
+        Snapshot.bBrakeButtonHeld ? 1 : 0,
+        Snapshot.AppliedGradePercent,
+        *Snapshot.SteeringSource));
     File->Flush();
 }
 

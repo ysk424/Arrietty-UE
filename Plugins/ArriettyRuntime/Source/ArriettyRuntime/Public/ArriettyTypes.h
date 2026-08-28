@@ -8,7 +8,7 @@
 namespace Arrietty
 {
 inline constexpr TCHAR Version[] = TEXT("0.8.0");
-inline constexpr TCHAR RightControllerSerial[] = TEXT("LHR-9EFF8645");
+inline constexpr TCHAR SteeringControllerSerial[] = TEXT("LHR-9EFF8645");
 inline constexpr TCHAR RideSurfaceTag[] = TEXT("SecretWorldRideSurface");
 inline constexpr double EyeHeightMeters = 1.5;
 inline constexpr double DefaultMoveStepMeters = 0.5;
@@ -19,6 +19,7 @@ inline constexpr double WheelbaseMeters = 1.05;
 inline constexpr double SteeringGain = 0.50;
 inline constexpr double SteeringDeadzoneDegrees = 1.5;
 inline constexpr double MaxEffectiveSteeringDegrees = 15.0;
+inline constexpr double BrakeGradePercent = 3.0;
 inline constexpr double SampleStaleSeconds = 1.25;
 inline constexpr double HeartRateStaleSeconds = 5.0;
 inline constexpr double CoastStopSpeedKmh = 5.0;
@@ -72,11 +73,19 @@ struct FArriettyRideSnapshot
     int32 PowerWatts = 0;
     TOptional<uint16> HeartRateBpm;
     FString HeartRateStatus = TEXT("NOT CONNECTED");
+    FString ControllerStatus = TEXT("SEARCHING: USB controller");
+    bool bControllerConnected = false;
+    FVector2D ControllerJoystick1 = FVector2D::ZeroVector;
+    FVector2D ControllerJoystick2 = FVector2D::ZeroVector;
+    uint8 ControllerButtonMask = 0;
+    bool bBrakeButtonHeld = false;
+    double AppliedGradePercent = 0.0;
     double DistanceMeters = 0.0;
     double AltitudeMeters = 0.0;
     int32 LapsCompleted = 0;
     bool bFlightEnabled = false;
     bool bSteeringTracking = false;
+    FString SteeringSource = TEXT("NONE");
     double RawSteeringDegrees = 0.0;
     double EffectiveSteeringDegrees = 0.0;
     int32 SelectedPreset = 5;

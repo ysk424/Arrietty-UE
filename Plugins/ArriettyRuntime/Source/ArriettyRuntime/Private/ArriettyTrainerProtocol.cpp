@@ -130,21 +130,32 @@ TOptional<uint16> ArriettyTrainerProtocol::ParseHeartRateMeasurement(
 
 TArray<uint8> ArriettyTrainerProtocol::BuildFlatRoadControlCommand(int32 PresetIndex)
 {
+    return BuildSimulationControlCommand(PresetIndex, 0.0);
+}
+
+TArray<uint8> ArriettyTrainerProtocol::BuildSimulationControlCommand(
+    int32 PresetIndex,
+    double GradePercent)
+{
     const FArriettyControlPreset* Preset = FindPreset(PresetIndex);
     if (Preset == nullptr)
     {
         return {};
     }
     const int16 WindSpeed = 0;
-    const int16 Grade = 0;
+    const int16 Grade = static_cast<int16>(FMath::Clamp(
+        FMath::RoundToInt(GradePercent * 100.0),
+        static_cast<int32>(MIN_int16),
+        static_cast<int32>(MAX_int16)));
+    const uint16 GradeBits = static_cast<uint16>(Grade);
     const uint8 RollingResistance = static_cast<uint8>(FMath::RoundToInt(Preset->RollingResistance / 0.0001));
     const uint8 WindResistance = 51;
     return {
         FtmsSetIndoorBikeSimulation,
         static_cast<uint8>(WindSpeed & 0xff),
         static_cast<uint8>((WindSpeed >> 8) & 0xff),
-        static_cast<uint8>(Grade & 0xff),
-        static_cast<uint8>((Grade >> 8) & 0xff),
+        static_cast<uint8>(GradeBits & 0xff),
+        static_cast<uint8>((GradeBits >> 8) & 0xff),
         RollingResistance,
         WindResistance,
     };
@@ -244,4 +255,19 @@ double ArriettyTrainerProtocol::HeadingDegreesForUnrealWorldForward(
     // Unreal world yaw has the opposite sign from ride HeadingDegrees.
     return FMath::UnwindDegrees(-FMath::RadiansToDegrees(
         FMath::Atan2(WorldForward.Y, WorldForward.X)));
+}
+
+double ArriettyTrainerProtocol::YawCorrectionDegrees(
+    const FVector2D& CurrentWorldForward,
+    const FVector2D& TargetWorldForward)
+{
+    const FVector2D Current = CurrentWorldForward.GetSafeNormal();
+    const FVector2D Target = TargetWorldForward.GetSafeNormal();
+    if (Current.IsNearlyZero() || Target.IsNearlyZero())
+    {
+        return 0.0;
+    }
+    return FMath::RadiansToDegrees(FMath::Atan2(
+        Current.X * Target.Y - Current.Y * Target.X,
+        FVector2D::DotProduct(Current, Target)));
 }
