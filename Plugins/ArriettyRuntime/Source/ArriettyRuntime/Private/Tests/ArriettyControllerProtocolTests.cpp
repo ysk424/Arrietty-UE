@@ -27,6 +27,7 @@ bool FArriettyControllerProtocolTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Button 4 pressed"), ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 3));
     TestTrue(TEXT("Joystick 2 switch pressed"), ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 7));
     TestFalse(TEXT("Button 2 not pressed"), ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 1));
+    TestTrue(TEXT("Button 5 power boost bit"), ArriettyControllerProtocol::IsPressed(0x10, 4));
     TestTrue(TEXT("Button 6 brake bit"), ArriettyControllerProtocol::IsPressed(0x20, 5));
 
     TestFalse(TEXT("Wrong version rejected"), ArriettyControllerProtocol::ParseStateLine(

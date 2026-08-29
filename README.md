@@ -1,6 +1,6 @@
 # Arrietty
 
-Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定したVIVEコントローラーを使い、Unreal EngineのLevel内を走行・人力飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.9.0です。
+Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定したVIVEコントローラーを使い、Unreal EngineのLevel内を走行・人力飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.10.0です。
 
 ## 確認済み開発環境
 
@@ -71,7 +71,7 @@ pwsh -File .\Tools\Update-ArriettyWorldProject.ps1 `
 - `Numpad .`: 自転車の走行方向を変えず、現在のHMD仮想視界を走行方向へ再調整
 - `Esc`: ログとT2接続を終了する。VR PreviewではEditorへ戻り、パッケージ版ではArriettyを閉じる
 
-ESP32有線操作盤を接続した場合はCOMポートを自動検出します。Button 1は走行開始／開始後の約2 m安全復帰、Button 2は地上・人力飛行モード、Button 6は押下中だけT2へ3%上り勾配を送るブレーキです。飛行中は右側のJoystick 2でエルロンとエレベーターを操作します。Button 3〜5、Joystick 1のX/Y/SW、Joystick 2のSWは受信・表示のみで、ゲーム内用途はまだ割り当てていません。USB接続直後の約1秒は中央校正のため両スティックへ触れないでください。
+ESP32有線操作盤を接続した場合はCOMポートを自動検出します。Button 1は走行開始／開始後の約2 m安全復帰、Button 2は地上・人力飛行モード、Button 5は飛行推進パワー`x1`／`x5`、Button 6は押下中だけT2へ3%上り勾配を送るブレーキです。飛行中は右側のJoystick 2でエルロンとエレベーターを操作します。Button 3/4、Joystick 1のX/Y/SW、Joystick 2のSWは受信・表示のみで、ゲーム内用途はまだ割り当てていません。USB接続直後の約1秒は中央校正のため両スティックへ触れないでください。
 
 ## 維持した機能
 
@@ -85,13 +85,19 @@ ESP32有線操作盤を接続した場合はCOMポートを自動検出します
 - 実測パワーを推進力へ変換する有効質量35 kg、滑空比30、プロペラ効率80%の人力飛行モデル
 - 最良滑空速度24 km/h、離陸20 km/h、失速18 km/h、回復20.5 km/h。失速時は機首が下がり、降下して速度を回復する
 - 飛行中はJoystick 2のYをエルロン（`+Y`左翼下がり、`-Y`右翼下がり）、Xをエレベーター（`+X`機首上げ、`-X`機首下げ）に使い、ハンドルをラダーに使う
+- 24 km/hを操舵基準速度とし、対気速度の二乗に応じてピッチ／バンクの到達速度を変える。最大角±12°／±25°は維持し、低速で鈍く、高速で速くなる
+- Button 5で推進計算だけを`x5`にするエンジンブースト。T2の実測Wは変更せず、推進Wと別々に表示・記録する
 - `SecretWorldRideSurface`タグを持つActorまたはComponentだけを走行面として使う下向きレイキャスト
 - 仮想自転車の正面1.05m（105cm）、中心高1.10mに固定する54×30cmの不透明World Space VR計器。自動車のダッシュボードと同様に進行方向と一緒に動き、頭の向きには追従しない
-- 速度、心拍、時刻、ケイデンス、パワー、距離、周回、高度、モード、XY、P番号、FPS、走行状態の表示
+- 対気速度を主表示する人工水平儀、心拍、時刻、ケイデンス、実測／推進パワー、距離、高度、昇降率、Heading、Pitch、Bank、FPA、AoA、操舵効率、失速／過速度、地理座標の表示
 - BLEエラー、操舵追跡喪失、コース端、飛行切替を短時間だけHMD前方へ表示
 - 固定名`Saved/arrietty_ride.csv`への上書きログ
 
 飛行モードは`Numpad 7`またはButton 2で有効にします。20 km/h以上でJoystick 2のXを正側へ引くと離陸します。約95 Wで24 km/hの水平飛行となり、それ以上のパワーは上昇へ、少ないパワーは降下へ使われます。エレベーターでさらに上昇すると対気速度を失い、18 km/h未満で失速します。回復はXを負側へ押して機首を下げ、20.5 km/h以上へ戻します。着陸後まで飛行モードは継続し、空中で地上モードへ切り替えることはできません。コース外へ飛べますが、着陸と地上モードへの復帰には`SecretWorldRideSurface`上空へ戻る必要があります。
+
+## Google Earth / Cesium
+
+`Plugins/ArriettyCesium`は既存の平面世界からCesium依存を隔離し、Globe AnchorとOrigin ShiftでWGS84上を連続飛行できるようにします。Funafuti開始点の`/Game/Worlds/ArriettyEarth/ArriettyEarth`、Google Photorealistic 3D Tiles、可視100 m滑走路と不可視2 km rollout面、認証境界は[`docs/CESIUM_EARTH.md`](docs/CESIUM_EARTH.md)を参照してください。初回Level作成時の手順は[`docs/NEOSTACK_EARTH_SETUP.md`](docs/NEOSTACK_EARTH_SETUP.md)へ残しています。
 
 ## 60 FPS設計
 
@@ -103,15 +109,16 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 
 ## 検証状態
 
-- UE 5.8.2 Editor: ビルド成功
-- Win64 Development Game / Shipping: ビルド成功
+- v0.10.0 UE 5.8.2 Editor: `ArriettyRuntime`と`ArriettyCesium`を含めビルド成功
+- v0.10.0 Win64 Development Game / Shipping: ビルド成功
 - Visual Studio 2026ソリューション: 生成成功（ToolsVersion 18.0）
 - UE Automation: 8テスト成功（人力飛行、ESP32シリアルプロトコル、心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
 - NullRHIゲーム起動: `ArriettyRuntime`、`ArriettyGameMode`、`ArriettyDemo` Levelのロード成功
 - 別名の世界プロジェクト生成、Runtime更新、VS2026 Editorビルド: 成功
-- Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み
+- v0.9.0 Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み。v0.10.0 Earth Levelは作成・保存済みで、Earthを含むcook/packageは未実施
 - T2、HMD、VIVEコントローラー、ESP32操作盤の統合実走: `RightGrip`自動選択、開始Heading 0°、809.223 m走行、飛行、3%ブレーキと0%解除、Button 1の2.01 m安全復帰、Esc終了を確認済み（2026-08-28）
-- ESP32有線操作盤: 完成版書き込み、CLI 50 Hz通信、UEのCOM7自動検出・接続を確認済み（2026-08-28）
+- Earth Level通常PIE: Google地表、空、可視滑走路、Joystick 2上下左右を確認。旧100 m端への衝突対策として不可視2 km rollout面を追加し、Editor再ビルドとPIE smoke test成功（2026-08-29）
+- ESP32有線操作盤: 製品版書き込み、CLI 50 Hz通信、4軸全範囲、Button 1/2/3/4/6と両SWを確認。Button 5は半田切れのため修理待ち（2026-08-29）
 
 実機試験は[`docs/ACCEPTANCE_TEST.md`](docs/ACCEPTANCE_TEST.md)に沿って行います。
 

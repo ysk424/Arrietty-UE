@@ -1,11 +1,12 @@
 # Arrietty UE architecture
 
-最終更新: 2026-08-28
+最終更新: 2026-08-29
 
 ## 実行時構成
 
 - `ArriettyWorldHost`: `.uproject`ごとの最小ゲームモジュール。プロジェクト名とVS2026 Targetだけを所有する。
 - `ArriettyRuntime`: 世界プロジェクト間で更新・再ビルドできるMITライセンスのRuntimeプラグイン。
+- `ArriettyCesium`: Cesium依存をRuntime本体から隔離し、WGS84移動、Globe Anchor、Origin Shift、地球用GameMode／CourseStartを提供するproject plugin。
 - `AArriettyPawn`: OpenXR HMD/左右自動選択グリップ、テンキー、走行積算、操舵、飛行、走行面判定をゲームスレッドで処理する。
 - `FArriettyBluetoothManager`: Windows Runtime BLEを専用ワーカースレッドで実行する。Unreal Objectへ触れず、MPSCキューだけでゲームスレッドへ通知する。
 - `FArriettySerialController`: COM1〜64からArrietty ESP32を`PING`で識別し、USBシリアルを専用ワーカースレッドで50 Hz受信する。切断時は自動再探索し、MPSCキューだけでゲームスレッドへ通知する。
@@ -13,7 +14,7 @@
 - `ArriettyTrainerProtocol`: FTMS/CSC解析、FTMS Control Pointコマンド、停止・操舵、人力飛行のエネルギー・抗力・失速計算を保持する。
 - `FArriettyRideLog`: `Saved/arrietty_ride.csv`を走行ごとに上書きし、各通知でflushする。
 - `UArriettyControlWidget`: BlenderのNパネルに相当するデスクトップUIをC++だけで構築する。
-- `UArriettyInstrumentWidget`: 黒背景を持たない緑・オレンジのVR空間計器。
+- `UArriettyInstrumentWidget`: 人工水平儀、飛行角、速度警告、実測／推進パワー、地理座標を表示する緑・オレンジのVR空間計器。
 - `AArriettyCourseStart`: Level内で自転車の開始位置と開始方向を示す`PlayerStart`。
 - `AArriettyWorldBuilder`: `ArriettyDemo` Levelにだけ明示配置し、HISM中心の軽量テスト世界を作る。
 
@@ -29,13 +30,19 @@ HMD再センタリングはCamera Componentのゲームスレッド姿勢を使�
 
 BLEの探索、接続、GATT通知、Control Point応答待ちはワーカースレッドです。UnrealのActor、Component、Widget、World、CSVはゲームスレッドだけから操作します。ワーカーからのイベントには世代番号を付け、前回走行の遅延通知を破棄します。
 
-ESP32のCOM探索と読取も専用ワーカースレッドです。ゲームスレッドの`AArriettyPawn`はキューを毎フレーム排出し、Button 1/2は立ち上がり、Button 6は押下と解放の両方を操作へ変換します。Button 1は開始後に直近の走行軌跡を約2 m巻き戻し、Button 6は押下中だけT2のFTMS勾配を3%にします。Button 3〜5、Joystick 1のX/Y/SW、Joystick 2のSWは状態へ保存してUIへ表示しますが、ゲーム内用途はまだ割り当てません。Joystick 2のX/Yは飛行中だけエレベーター／エルロンへ使います。ハンドル入力は地上で前輪操舵、飛行中はラダーになります。
+ESP32のCOM探索と読取も専用ワーカースレッドです。ゲームスレッドの`AArriettyPawn`はキューを毎フレーム排出し、Button 1/2/5は立ち上がり、Button 6は押下と解放の両方を操作へ変換します。Button 1は開始後に直近の走行軌跡を約2 m巻き戻し、Button 5は飛行推進パワーを`x1`／`x5`で切り替え、Button 6は押下中だけT2のFTMS勾配を3%にします。Button 3/4、Joystick 1のX/Y/SW、Joystick 2のSWは状態へ保存してUIへ表示しますが、ゲーム内用途はまだ割り当てません。Joystick 2のX/Yは飛行中だけエレベーター／エルロンへ使います。ハンドル入力は地上で前輪操舵、飛行中はラダーになります。
 
 ## 人力飛行
 
 飛行モードではT2の表示速度を移動速度にせず、測定パワーをプロペラ効率80%で推進力へ変換します。有効質量35 kg、滑空比30、最良滑空速度24 km/hの抗力曲線を使い、推進力・抗力・重力・昇降率のエネルギー収支から対気速度を積分します。約95 Wが24 km/hの水平飛行点です。Joystick 2 Xのエレベーターで上昇率を増すと対気速度が減り、機首下げでは高度を速度へ変換します。
 
 20 km/h以上かつ機首上げ入力で離陸し、18 km/h未満で失速、機首下げかつ20.5 km/h以上で回復します。Joystick 2 Yは`+Y`左翼下がり／`-Y`右翼下がりのバンク目標となり、バンクによる旋回率とハンドルのラダー旋回率を合成します。空中で地上モードへ直接切り替えることはできず、`SecretWorldRideSurface`上へ着陸してから切り替えます。
+
+ピッチ／バンクの目標角そのものは安全上限±12°／±25°を維持し、そこへ到達する角速度だけを`(airspeed / 24 km/h)^2`で変える。通常の操舵効率は0.20〜1.75へclampし、失速中は25%へ落とす。FPAは対気速度と鉛直速度から求め、AoAは`Pitch - FPA`として計器とCSVへ出す。Button 5はT2の実測値を変更せず、飛行モデルへ渡す推進パワーだけを5倍にする。
+
+## Cesium座標
+
+`UArriettyNavigationComponent`は非平面世界用の拡張境界であり、通常世界では従来変換へfallbackする。`UArriettyCesiumNavigationComponent`は前フレームのGlobe Anchor ECEF位置に、現在地のENU接平面で得たEast/North差分を加え、新しいlongitude/latitudeへ変換する。高さとEast-South-Up姿勢はGlobe Anchorへ適用し、`UCesiumOriginShiftComponent`がPawn近傍へUE原点を移す。これによりArrietty内部の距離積算をメートルのまま維持しながら世界を周回できる。
 
 ## 座標
 

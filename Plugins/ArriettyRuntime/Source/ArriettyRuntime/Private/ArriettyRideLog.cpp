@@ -25,7 +25,7 @@ bool FArriettyRideLog::Start()
         return false;
     }
     StartedAtSeconds = FPlatformTime::Seconds();
-    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,power_w,heart_rate_bpm,distance_m,laps_completed,flight_mode,airborne,stalled,altitude_m,vertical_speed_mps,bank_degrees,pitch_degrees,effective_mass_kg,glide_ratio,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset,brake_button_held,trainer_grade_percent,steering_source\r\n"));
+    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,rider_power_w,propulsion_power_w,power_multiplier,power_boost_x5,heart_rate_bpm,distance_m,laps_completed,flight_mode,airborne,stalled,overspeed,altitude_m,vertical_speed_mps,flight_path_angle_degrees,angle_of_attack_degrees,control_authority,bank_degrees,pitch_degrees,effective_mass_kg,glide_ratio,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,geospatial_navigation,longitude_degrees,latitude_degrees,ellipsoid_height_m,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset,brake_button_held,trainer_grade_percent,steering_source\r\n"));
     FArriettyRideSnapshot Empty;
     Record(TEXT("START"), Empty, 0.0, {}, {}, false, false);
     return true;
@@ -52,44 +52,56 @@ void FArriettyRideLog::Record(
         ? FString::Printf(TEXT("%u"), Snapshot.HeartRateBpm.GetValue())
         : FString();
     const double EyeZ = Snapshot.AltitudeMeters + Arrietty::EyeHeightMeters;
-    WriteUtf8(FString::Printf(
-        TEXT("%s,%.3f,%s,%.2f,%.2f,%.1f,%d,%s,%.3f,%d,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.1f,%.1f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%s,%s,%d,%d,%s,%s,%d,%.1f,%s\r\n"),
-        *Timestamp,
-        FPlatformTime::Seconds() - StartedAtSeconds,
+    const TArray<FString> Fields = {
+        Timestamp,
+        FString::Printf(TEXT("%.3f"), FPlatformTime::Seconds() - StartedAtSeconds),
         Event,
-        Snapshot.SpeedKmh,
-        FtmsSpeedKmh,
-        Snapshot.CadenceRpm,
-        Snapshot.PowerWatts,
-        *HeartRate,
-        Snapshot.DistanceMeters,
-        Snapshot.LapsCompleted,
-        Snapshot.bFlightEnabled ? 1 : 0,
-        Snapshot.bAircraftAirborne ? 1 : 0,
-        Snapshot.bAircraftStalled ? 1 : 0,
-        Snapshot.AltitudeMeters,
-        Snapshot.VerticalSpeedMetersPerSecond,
-        Snapshot.BankDegrees,
-        Snapshot.PitchDegrees,
-        Arrietty::FlightEffectiveMassKg,
-        Arrietty::FlightGlideRatio,
-        Arrietty::EyeHeightMeters,
-        Snapshot.AltitudeMeters,
-        EyeZ,
-        Snapshot.PositionMeters.X,
-        Snapshot.PositionMeters.Y,
-        Snapshot.HeadingDegrees,
-        Snapshot.RawSteeringDegrees,
-        Snapshot.EffectiveSteeringDegrees,
-        *WheelRevs,
-        *WheelTicks,
-        bWheelStopped ? 1 : 0,
-        bLowSpeedCoastStopped ? 1 : 0,
-        *Snapshot.ControlStatus,
-        *Preset,
-        Snapshot.bBrakeButtonHeld ? 1 : 0,
-        Snapshot.AppliedGradePercent,
-        *Snapshot.SteeringSource));
+        FString::Printf(TEXT("%.2f"), Snapshot.SpeedKmh),
+        FString::Printf(TEXT("%.2f"), FtmsSpeedKmh),
+        FString::Printf(TEXT("%.1f"), Snapshot.CadenceRpm),
+        FString::Printf(TEXT("%d"), Snapshot.PowerWatts),
+        FString::Printf(TEXT("%.1f"), Snapshot.PropulsionPowerWatts),
+        FString::Printf(TEXT("%.1f"), Snapshot.PowerMultiplier),
+        Snapshot.bPowerBoost5x ? TEXT("1") : TEXT("0"),
+        HeartRate,
+        FString::Printf(TEXT("%.3f"), Snapshot.DistanceMeters),
+        FString::Printf(TEXT("%d"), Snapshot.LapsCompleted),
+        Snapshot.bFlightEnabled ? TEXT("1") : TEXT("0"),
+        Snapshot.bAircraftAirborne ? TEXT("1") : TEXT("0"),
+        Snapshot.bAircraftStalled ? TEXT("1") : TEXT("0"),
+        Snapshot.bAircraftOverspeed ? TEXT("1") : TEXT("0"),
+        FString::Printf(TEXT("%.3f"), Snapshot.AltitudeMeters),
+        FString::Printf(TEXT("%.3f"), Snapshot.VerticalSpeedMetersPerSecond),
+        FString::Printf(TEXT("%.3f"), Snapshot.FlightPathAngleDegrees),
+        FString::Printf(TEXT("%.3f"), Snapshot.AngleOfAttackDegrees),
+        FString::Printf(TEXT("%.3f"), Snapshot.FlightControlAuthority),
+        FString::Printf(TEXT("%.3f"), Snapshot.BankDegrees),
+        FString::Printf(TEXT("%.3f"), Snapshot.PitchDegrees),
+        FString::Printf(TEXT("%.1f"), Arrietty::FlightEffectiveMassKg),
+        FString::Printf(TEXT("%.1f"), Arrietty::FlightGlideRatio),
+        FString::Printf(TEXT("%.3f"), Arrietty::EyeHeightMeters),
+        FString::Printf(TEXT("%.3f"), Snapshot.AltitudeMeters),
+        FString::Printf(TEXT("%.3f"), EyeZ),
+        FString::Printf(TEXT("%.3f"), Snapshot.PositionMeters.X),
+        FString::Printf(TEXT("%.3f"), Snapshot.PositionMeters.Y),
+        FString::Printf(TEXT("%.3f"), Snapshot.HeadingDegrees),
+        Snapshot.bGeospatialNavigation ? TEXT("1") : TEXT("0"),
+        FString::Printf(TEXT("%.8f"), Snapshot.LongitudeDegrees),
+        FString::Printf(TEXT("%.8f"), Snapshot.LatitudeDegrees),
+        FString::Printf(TEXT("%.3f"), Snapshot.EllipsoidHeightMeters),
+        FString::Printf(TEXT("%.3f"), Snapshot.RawSteeringDegrees),
+        FString::Printf(TEXT("%.3f"), Snapshot.EffectiveSteeringDegrees),
+        WheelRevs,
+        WheelTicks,
+        bWheelStopped ? TEXT("1") : TEXT("0"),
+        bLowSpeedCoastStopped ? TEXT("1") : TEXT("0"),
+        Snapshot.ControlStatus,
+        Preset,
+        Snapshot.bBrakeButtonHeld ? TEXT("1") : TEXT("0"),
+        FString::Printf(TEXT("%.1f"), Snapshot.AppliedGradePercent),
+        Snapshot.SteeringSource
+    };
+    WriteUtf8(FString::Join(Fields, TEXT(",")) + TEXT("\r\n"));
     File->Flush();
 }
 

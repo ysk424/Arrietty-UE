@@ -14,3 +14,11 @@ Saved/
 *.xcodeproj
 *.xcworkspace
 Dist/
+cesium-request-cache.sqlite*
+
+# Local editor-agent state and credentials. These are machine-specific and may
+# contain service configuration, so they must never be committed.
+.agents/
+.claude/
+.neostack/
+Content/CesiumSettings/

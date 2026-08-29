@@ -2,8 +2,8 @@
   "FileVersion": 3,
   "Version": 1000,
   "VersionName": "0.10.0",
-  "FriendlyName": "Arrietty Runtime",
-  "Description": "Ride Unreal Engine Levels with OpenXR and a CYCPLUS T2 trainer.",
+  "FriendlyName": "Arrietty Cesium",
+  "Description": "Cesium globe navigation for Arrietty human-powered flight.",
   "Category": "Virtual Reality",
   "CreatedBy": "ysk424",
   "CanContainContent": false,
@@ -11,14 +11,18 @@
   "Installed": false,
   "Modules": [
     {
-      "Name": "ArriettyRuntime",
+      "Name": "ArriettyCesium",
       "Type": "Runtime",
       "LoadingPhase": "Default"
     }
   ],
   "Plugins": [
     {
-      "Name": "OpenXR",
+      "Name": "ArriettyRuntime",
+      "Enabled": true
+    },
+    {
+      "Name": "CesiumForUnreal",
       "Enabled": true
     }
   ]

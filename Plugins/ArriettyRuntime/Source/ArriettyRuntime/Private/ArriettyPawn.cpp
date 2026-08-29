@@ -6,6 +6,7 @@
 #include "ArriettyBluetoothManager.h"
 #include "ArriettyAlertWidget.h"
 #include "ArriettyInstrumentWidget.h"
+#include "ArriettyNavigationComponent.h"
 #include "ArriettyRideLog.h"
 #include "ArriettySerialController.h"
 #include "ArriettyTrainerProtocol.h"
@@ -117,9 +118,12 @@ void AArriettyPawn::BeginPlay()
 {
     Super::BeginPlay();
     const FVector InitialWorldLocation = GetActorLocation();
-    StartPositionMeters = FVector2D(
-        InitialWorldLocation.X / 100.0,
-        -InitialWorldLocation.Y / 100.0);
+    NavigationComponent = FindComponentByClass<UArriettyNavigationComponent>();
+    StartPositionMeters = NavigationComponent
+        ? FVector2D::ZeroVector
+        : FVector2D(
+            InitialWorldLocation.X / 100.0,
+            -InitialWorldLocation.Y / 100.0);
     const FVector InitialWorldForward = GetActorForwardVector().GetSafeNormal2D();
     StartHeadingDegrees = InitialWorldForward.IsNearlyZero()
         ? 0.0
@@ -127,7 +131,12 @@ void AArriettyPawn::BeginPlay()
             FVector2D(InitialWorldForward.X, InitialWorldForward.Y));
     Snapshot.PositionMeters = StartPositionMeters;
     Snapshot.HeadingDegrees = StartHeadingDegrees;
-    GroundHeightMeters = InitialWorldLocation.Z / 100.0;
+    GroundHeightMeters = NavigationComponent ? 0.0 : InitialWorldLocation.Z / 100.0;
+    if (NavigationComponent)
+    {
+        NavigationComponent->InitializeNavigation(StartPositionMeters, GroundHeightMeters);
+        SyncNavigationSnapshot();
+    }
 
     Bluetooth = MakeUnique<FArriettyBluetoothManager>();
     SerialController = MakeUnique<FArriettySerialController>();
@@ -564,6 +573,7 @@ void AArriettyPawn::StartRide()
     Snapshot.FtmsSpeedKmh = 0.0;
     Snapshot.CadenceRpm = 0.0;
     Snapshot.PowerWatts = 0;
+    ResetPowerBoost();
     Snapshot.HeartRateBpm.Reset();
     Snapshot.HeartRateStatus = TEXT("SEARCHING");
     Snapshot.DistanceMeters = 0.0;
@@ -609,6 +619,7 @@ void AArriettyPawn::StopRide(const TCHAR* LogEvent)
     Snapshot.HeartRateStatus = TEXT("DISCONNECTED");
     LastHeartRateSampleSeconds = 0.0;
     Snapshot.bFlightEnabled = false;
+    ResetPowerBoost();
     Snapshot.AppliedGradePercent = 0.0;
     Snapshot.AltitudeMeters = 0.0;
     ResetHumanPoweredFlight();
@@ -652,6 +663,7 @@ void AArriettyPawn::ToggleFlight()
         }
         GroundHeightMeters = LandingGroundHeight;
         Snapshot.bFlightEnabled = false;
+        ResetPowerBoost();
         ResetHumanPoweredFlight();
         Snapshot.Message = TEXT("Ground mode enabled");
         ShowVrAlert(TEXT("GROUND MODE"), 2.5);
@@ -664,6 +676,39 @@ void AArriettyPawn::ToggleFlight()
         ShowVrAlert(TEXT("HUMAN-POWERED FLIGHT\nJ2 X PITCH  J2 Y BANK\nHANDLE RUDDER"), 3.5);
     }
     UpdateWorldTransform(false);
+}
+
+void AArriettyPawn::TogglePowerBoost()
+{
+    if (!IsRideActive() || !Snapshot.bFlightEnabled)
+    {
+        Snapshot.Message = TEXT("Enable human-powered flight before toggling engine power x5");
+        ShowVrAlert(TEXT("POWER x5 REQUIRES\nFLIGHT MODE"), 2.5);
+        return;
+    }
+
+    Snapshot.bPowerBoost5x = !Snapshot.bPowerBoost5x;
+    Snapshot.PowerMultiplier = Snapshot.bPowerBoost5x
+        ? Arrietty::FlightPowerBoostMultiplier
+        : 1.0;
+    Snapshot.PropulsionPowerWatts =
+        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(
+            Snapshot.PowerWatts,
+            Snapshot.bPowerBoost5x);
+    Snapshot.Message = Snapshot.bPowerBoost5x
+        ? TEXT("Engine power boost enabled: rider power x5")
+        : TEXT("Engine power boost disabled: rider power x1");
+    ShowVrAlert(
+        Snapshot.bPowerBoost5x ? TEXT("ENGINE POWER x5") : TEXT("ENGINE POWER x1"),
+        2.0);
+    RecordTelemetry(Snapshot.bPowerBoost5x ? TEXT("POWER_X5_ON") : TEXT("POWER_X5_OFF"));
+}
+
+void AArriettyPawn::ResetPowerBoost()
+{
+    Snapshot.bPowerBoost5x = false;
+    Snapshot.PowerMultiplier = 1.0;
+    Snapshot.PropulsionPowerWatts = 0.0;
 }
 
 void AArriettyPawn::ToggleInstrumentPanel()
@@ -825,6 +870,7 @@ void AArriettyPawn::HandleControllerSample(const FArriettyControllerSample& Samp
     }
     if (ArriettyControllerProtocol::IsPressed(PressedEdges, 0)) StartRide();
     if (ArriettyControllerProtocol::IsPressed(PressedEdges, 1)) ToggleFlight();
+    if (ArriettyControllerProtocol::IsPressed(PressedEdges, 4)) TogglePowerBoost();
 }
 
 void AArriettyPawn::SetBrakeButtonHeld(bool bHeld)
@@ -993,6 +1039,7 @@ void AArriettyPawn::PumpBluetoothEvents()
             Snapshot.AppliedPreset.Reset();
             Snapshot.AppliedGradePercent = 0.0;
             Snapshot.bFlightEnabled = false;
+            ResetPowerBoost();
             Snapshot.AltitudeMeters = 0.0;
             ResetHumanPoweredFlight();
             ShowVrAlert(FString::Printf(TEXT("BLUETOOTH ERROR\n%s"), *Event.Message), 5.0);
@@ -1199,6 +1246,8 @@ void AArriettyPawn::AdvanceRide(float DeltaSeconds)
         return;
     }
     Snapshot.SpeedKmh = TrainerSpeedKmh;
+    Snapshot.PropulsionPowerWatts = 0.0;
+    Snapshot.PowerMultiplier = 1.0;
     if (IsWheelStopped(Now) && FtmsSpeedKmh > 0.0)
     {
         Snapshot.Message = TEXT("Stopped; CSC wheel rotation is stationary");
@@ -1269,10 +1318,18 @@ void AArriettyPawn::AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeco
     const double RiderPowerWatts = NowSeconds - LastFtmsSampleSeconds <= Arrietty::SampleStaleSeconds
         ? Snapshot.PowerWatts
         : 0.0;
+    const double PropulsionPowerWatts =
+        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(
+            RiderPowerWatts,
+            Snapshot.bPowerBoost5x);
+    Snapshot.PowerMultiplier = Snapshot.bPowerBoost5x
+        ? Arrietty::FlightPowerBoostMultiplier
+        : 1.0;
+    Snapshot.PropulsionPowerWatts = PropulsionPowerWatts;
     const FArriettyFlightStepResult FlightResult =
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
             FlightState,
-            RiderPowerWatts,
+            PropulsionPowerWatts,
             Snapshot.ControllerJoystick2.X,
             Snapshot.ControllerJoystick2.Y,
             Snapshot.EffectiveSteeringDegrees,
@@ -1365,8 +1422,21 @@ void AArriettyPawn::SyncHumanPoweredFlightSnapshot()
     Snapshot.VerticalSpeedMetersPerSecond = FlightState.VerticalSpeedMetersPerSecond;
     Snapshot.BankDegrees = FlightState.BankDegrees;
     Snapshot.PitchDegrees = FlightState.PitchDegrees;
+    Snapshot.FlightPathAngleDegrees = FlightState.FlightPathAngleDegrees;
+    Snapshot.AngleOfAttackDegrees = FlightState.AngleOfAttackDegrees;
+    Snapshot.FlightControlAuthority = FlightState.ControlAuthority;
     Snapshot.bAircraftAirborne = FlightState.bAirborne;
     Snapshot.bAircraftStalled = FlightState.bStalled;
+    Snapshot.bAircraftOverspeed = Snapshot.SpeedKmh >= Arrietty::FlightOverspeedWarningKmh;
+}
+
+void AArriettyPawn::SyncNavigationSnapshot()
+{
+    Snapshot.bGeospatialNavigation = NavigationComponent &&
+        NavigationComponent->GetGeospatialCoordinates(
+            Snapshot.LongitudeDegrees,
+            Snapshot.LatitudeDegrees,
+            Snapshot.EllipsoidHeightMeters);
 }
 
 void AArriettyPawn::RefreshRideSurfaceMode()
@@ -1392,8 +1462,14 @@ bool AArriettyPawn::ResolveRideSurfaceHeight(
     {
         return false;
     }
-    const FVector Start = ArriettyToWorld(PositionMeters, 10000.0);
-    const FVector End = ArriettyToWorld(PositionMeters, -10000.0);
+    FVector Start;
+    FVector End;
+    if (!NavigationComponent ||
+        !NavigationComponent->BuildRideSurfaceTrace(PositionMeters, Start, End))
+    {
+        Start = ArriettyToWorld(PositionMeters, 10000.0);
+        End = ArriettyToWorld(PositionMeters, -10000.0);
+    }
     TArray<FHitResult> Hits;
     FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ArriettyRideSurface), false, this);
     if (!GetWorld()->LineTraceMultiByChannel(Hits, Start, End, ECC_Visibility, QueryParams))
@@ -1410,7 +1486,10 @@ bool AArriettyPawn::ResolveRideSurfaceHeight(
             Hit.GetActor()->ActorHasTag(FName(Arrietty::RideSurfaceTag));
         if (bTaggedComponent || bTaggedActor)
         {
-            HighestMeters = FMath::Max(HighestMeters, Hit.ImpactPoint.Z / 100.0);
+            const double HitHeightMeters = NavigationComponent
+                ? NavigationComponent->HeightMetersFromWorldLocation(Hit.ImpactPoint)
+                : Hit.ImpactPoint.Z / 100.0;
+            HighestMeters = FMath::Max(HighestMeters, HitHeightMeters);
             bFound = true;
         }
     }
@@ -1440,12 +1519,22 @@ void AArriettyPawn::UpdateWorldTransform(bool bRequireRideSurface)
     {
         GroundHeightMeters = 0.0;
     }
+    const double HeightMeters = GroundHeightMeters + Snapshot.AltitudeMeters;
+    const double PitchDegrees = Snapshot.bAircraftAirborne ? Snapshot.PitchDegrees : 0.0;
+    const double BankDegrees = Snapshot.bAircraftAirborne ? Snapshot.BankDegrees : 0.0;
+    if (NavigationComponent && NavigationComponent->ApplyNavigationPose(
+        Snapshot.PositionMeters,
+        HeightMeters,
+        Snapshot.HeadingDegrees,
+        PitchDegrees,
+        BankDegrees))
+    {
+        SyncNavigationSnapshot();
+        return;
+    }
     SetActorLocationAndRotation(
-        ArriettyToWorld(Snapshot.PositionMeters, GroundHeightMeters + Snapshot.AltitudeMeters),
-        FRotator(
-            Snapshot.bAircraftAirborne ? Snapshot.PitchDegrees : 0.0,
-            -Snapshot.HeadingDegrees,
-            Snapshot.bAircraftAirborne ? -Snapshot.BankDegrees : 0.0));
+        ArriettyToWorld(Snapshot.PositionMeters, HeightMeters),
+        FRotator(PitchDegrees, -Snapshot.HeadingDegrees, -BankDegrees));
 }
 
 FVector AArriettyPawn::ArriettyToWorld(const FVector2D& PositionMeters, double HeightMeters) const

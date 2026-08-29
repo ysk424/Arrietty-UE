@@ -29,6 +29,8 @@ double EffectiveSpeedKmh(
 void InitializeHumanPoweredFlight(FArriettyFlightState& State, double InitialAirspeedKmh = 0.0);
 double HumanPoweredFlightDragNewtons(double AirspeedMetersPerSecond);
 double HumanPoweredLevelFlightPowerWatts(double AirspeedKmh);
+double HumanPoweredFlightControlAuthority(double AirspeedMetersPerSecond, bool bStalled);
+double HumanPoweredFlightPropulsionPowerWatts(double RiderPowerWatts, bool bPowerBoost5x);
 FArriettyFlightStepResult StepHumanPoweredFlight(
     FArriettyFlightState& State,
     double RiderPowerWatts,

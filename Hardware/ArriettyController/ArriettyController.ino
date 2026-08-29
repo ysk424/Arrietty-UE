@@ -10,6 +10,7 @@ namespace {
 constexpr uint32_t kBaudRate = 115200;
 constexpr uint32_t kStreamIntervalMs = 20;  // 50 Hz
 constexpr uint32_t kDebounceMs = 15;
+constexpr uint32_t kMinimumReportedPressMs = 100;
 constexpr int kAdcMaximum = 4095;
 constexpr int kAxisDeadzone = 160;
 constexpr size_t kCommandBufferSize = 96;
@@ -36,7 +37,9 @@ char commandBuffer[kCommandBufferSize];
 size_t commandLength = 0;
 bool stablePressed[kDigitalInputCount] = {};
 bool candidatePressed[kDigitalInputCount] = {};
+bool previousRawPressed[kDigitalInputCount] = {};
 uint32_t candidateChangedAtMs[kDigitalInputCount] = {};
+uint32_t reportPressedUntilMs[kDigitalInputCount] = {};
 int filteredAxes[4] = {};
 int axisCenters[4] = {};
 bool streaming = false;
@@ -108,6 +111,15 @@ int NormalizeAxis(int value, int center) {
 void UpdateDigitalInputs(uint32_t nowMs) {
   for (size_t inputIndex = 0; inputIndex < kDigitalInputCount; ++inputIndex) {
     const bool pressed = digitalRead(kDigitalPins[inputIndex]) == LOW;
+    // Preserve even a short or electrically noisy press for five 50 Hz
+    // packets. This prevents a valid edge from disappearing inside the
+    // debounce window while the normal stable-state debounce still filters
+    // release chatter and sustained input.
+    if (pressed && !previousRawPressed[inputIndex]) {
+      reportPressedUntilMs[inputIndex] = nowMs + kMinimumReportedPressMs;
+    }
+    previousRawPressed[inputIndex] = pressed;
+
     if (pressed != candidatePressed[inputIndex]) {
       candidatePressed[inputIndex] = pressed;
       candidateChangedAtMs[inputIndex] = nowMs;
@@ -120,8 +132,11 @@ void UpdateDigitalInputs(uint32_t nowMs) {
 
 uint8_t BuildButtonMask() {
   uint8_t mask = 0;
+  const uint32_t nowMs = millis();
   for (size_t inputIndex = 0; inputIndex < kDigitalInputCount; ++inputIndex) {
-    if (stablePressed[inputIndex]) {
+    const bool reportLatchActive =
+        static_cast<int32_t>(reportPressedUntilMs[inputIndex] - nowMs) > 0;
+    if (stablePressed[inputIndex] || reportLatchActive) {
       mask |= static_cast<uint8_t>(1u << inputIndex);
     }
   }
@@ -196,7 +211,11 @@ void setup() {
     const bool pressed = digitalRead(kDigitalPins[inputIndex]) == LOW;
     stablePressed[inputIndex] = pressed;
     candidatePressed[inputIndex] = pressed;
+    previousRawPressed[inputIndex] = pressed;
     candidateChangedAtMs[inputIndex] = millis();
+    reportPressedUntilMs[inputIndex] = pressed
+        ? candidateChangedAtMs[inputIndex] + kMinimumReportedPressMs
+        : 0;
   }
 
   delay(300);

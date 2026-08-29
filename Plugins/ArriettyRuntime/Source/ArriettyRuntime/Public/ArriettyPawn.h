@@ -14,6 +14,7 @@
 class UCameraComponent;
 class UArriettyAlertWidget;
 class UArriettyInstrumentWidget;
+class UArriettyNavigationComponent;
 class UMotionControllerComponent;
 class USceneComponent;
 class UWidgetComponent;
@@ -36,6 +37,7 @@ public:
     void StartRide();
     void StopRide(const TCHAR* LogEvent = TEXT("STOP"));
     void ToggleFlight();
+    void TogglePowerBoost();
     void ToggleInstrumentPanel();
     void SelectControlPreset(int32 PresetIndex);
     void StepControlPreset(int32 Step);
@@ -81,6 +83,7 @@ private:
     void PumpControllerEvents();
     void HandleControllerSample(const FArriettyControllerSample& Sample);
     void SetBrakeButtonHeld(bool bHeld);
+    void ResetPowerBoost();
     void RecoverTwoMeters();
     void ResetRecoveryTrail();
     void RecordRecoveryPose(double AdvanceMeters);
@@ -92,6 +95,7 @@ private:
     void AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeconds);
     void ResetHumanPoweredFlight(double InitialAirspeedKmh = 0.0);
     void SyncHumanPoweredFlightSnapshot();
+    void SyncNavigationSnapshot();
     void UpdateWorldTransform(bool bRequireRideSurface);
     bool ResolveRideSurfaceHeight(const FVector2D& PositionMeters, double& OutHeightMeters) const;
     void RefreshRideSurfaceMode();
@@ -143,6 +147,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UArriettyAlertWidget> AlertWidget;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UArriettyNavigationComponent> NavigationComponent;
 
     TUniquePtr<FArriettyBluetoothManager> Bluetooth;
     TUniquePtr<FArriettySerialController> SerialController;

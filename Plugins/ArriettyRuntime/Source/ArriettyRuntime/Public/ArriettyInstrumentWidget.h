@@ -5,11 +5,33 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/Widget.h"
 #include "ArriettyTypes.h"
 #include "ArriettyInstrumentWidget.generated.h"
 
+class SArriettyAttitudeIndicator;
 class UTextBlock;
 class UProgressBar;
+
+/** Native, dependency-free artificial horizon used by the VR instrument panel. */
+UCLASS()
+class ARRIETTYRUNTIME_API UArriettyAttitudeIndicator : public UWidget
+{
+    GENERATED_BODY()
+
+public:
+    void SetAttitude(double PitchDegrees, double BankDegrees, bool bWarning);
+
+protected:
+    virtual TSharedRef<SWidget> RebuildWidget() override;
+    virtual void ReleaseSlateResources(bool bReleaseChildren) override;
+
+private:
+    TSharedPtr<SArriettyAttitudeIndicator> SlateIndicator;
+    double PitchDegrees = 0.0;
+    double BankDegrees = 0.0;
+    bool bWarning = false;
+};
 
 UCLASS()
 class ARRIETTYRUNTIME_API UArriettyInstrumentWidget : public UUserWidget
@@ -27,7 +49,13 @@ private:
     TObjectPtr<UTextBlock> SpeedText;
 
     UPROPERTY()
-    TObjectPtr<UTextBlock> HeartRateText;
+    TObjectPtr<UTextBlock> SpeedCueText;
+
+    UPROPERTY()
+    TObjectPtr<UArriettyAttitudeIndicator> AttitudeIndicator;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> PowerText;
 
     UPROPERTY()
     TObjectPtr<UProgressBar> HeartRateBar;
@@ -36,7 +64,10 @@ private:
     TObjectPtr<UTextBlock> ClockText;
 
     UPROPERTY()
-    TObjectPtr<UTextBlock> RideDataText;
+    TObjectPtr<UTextBlock> FlightDataText;
+
+    UPROPERTY()
+    TObjectPtr<UTextBlock> SensorText;
 
     UPROPERTY()
     TObjectPtr<UTextBlock> PositionText;

@@ -187,6 +187,32 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
             Arrietty::FlightBestGlideSpeedKmh),
         95.3,
         0.2));
+    TestEqual(TEXT("Normal propulsion uses rider power"),
+        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(150.0, false),
+        150.0);
+    TestEqual(TEXT("Button 5 boost multiplies propulsion power by five"),
+        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(150.0, true),
+        750.0);
+    TestEqual(TEXT("Negative propulsion power is rejected"),
+        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(-10.0, true),
+        0.0);
+
+    const double LowSpeedAuthority =
+        ArriettyTrainerProtocol::HumanPoweredFlightControlAuthority(18.5 / 3.6, false);
+    const double ReferenceSpeedAuthority =
+        ArriettyTrainerProtocol::HumanPoweredFlightControlAuthority(24.0 / 3.6, false);
+    const double HighSpeedAuthority =
+        ArriettyTrainerProtocol::HumanPoweredFlightControlAuthority(36.0 / 3.6, false);
+    TestTrue(TEXT("Control authority rises from low to reference speed"),
+        LowSpeedAuthority < ReferenceSpeedAuthority);
+    TestTrue(TEXT("Control authority rises above reference speed"),
+        ReferenceSpeedAuthority < HighSpeedAuthority);
+    TestTrue(TEXT("Control authority is one at the reference speed"),
+        FMath::IsNearlyEqual(ReferenceSpeedAuthority, 1.0));
+    TestTrue(TEXT("A stall reduces available control authority"),
+        FMath::IsNearlyEqual(
+            ArriettyTrainerProtocol::HumanPoweredFlightControlAuthority(24.0 / 3.6, true),
+            0.25));
 
     FArriettyFlightState Takeoff;
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(Takeoff, 21.0);
@@ -208,6 +234,39 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Positive J2 X raises the nose"), Controls.PitchDegrees > 5.0);
     TestTrue(TEXT("Positive J2 Y lowers the left wing"), Controls.BankDegrees > 10.0);
     TestTrue(TEXT("Left-wing-down bank turns left"), Controls.HeadingRateDegreesPerSecond > 0.0);
+    TestTrue(TEXT("Flight-path angle is calculated"),
+        !FMath::IsNearlyZero(Controls.FlightPathAngleDegrees));
+    TestTrue(TEXT("Angle of attack equals pitch minus flight-path angle"),
+        FMath::IsNearlyEqual(
+            Controls.AngleOfAttackDegrees,
+            FMath::UnwindDegrees(Controls.PitchDegrees - Controls.FlightPathAngleDegrees),
+            0.001));
+
+    auto MakeAirborneState = [](double InitialSpeedKmh)
+    {
+        FArriettyFlightState State;
+        ArriettyTrainerProtocol::InitializeHumanPoweredFlight(State, InitialSpeedKmh);
+        State.bAirborne = true;
+        State.AltitudeMeters = 100.0;
+        return State;
+    };
+    FArriettyFlightState LowSpeedControls = MakeAirborneState(18.5);
+    FArriettyFlightState ReferenceSpeedControls = MakeAirborneState(24.0);
+    FArriettyFlightState HighSpeedControls = MakeAirborneState(36.0);
+    ArriettyTrainerProtocol::StepHumanPoweredFlight(
+        LowSpeedControls, 150.0, 1.0, 1.0, 0.0, 0.1, true);
+    ArriettyTrainerProtocol::StepHumanPoweredFlight(
+        ReferenceSpeedControls, 150.0, 1.0, 1.0, 0.0, 0.1, true);
+    ArriettyTrainerProtocol::StepHumanPoweredFlight(
+        HighSpeedControls, 150.0, 1.0, 1.0, 0.0, 0.1, true);
+    TestTrue(TEXT("Pitch response is slower at low airspeed"),
+        LowSpeedControls.PitchDegrees < ReferenceSpeedControls.PitchDegrees);
+    TestTrue(TEXT("Pitch response is faster at high airspeed"),
+        ReferenceSpeedControls.PitchDegrees < HighSpeedControls.PitchDegrees);
+    TestTrue(TEXT("Bank response is slower at low airspeed"),
+        LowSpeedControls.BankDegrees < ReferenceSpeedControls.BankDegrees);
+    TestTrue(TEXT("Bank response is faster at high airspeed"),
+        ReferenceSpeedControls.BankDegrees < HighSpeedControls.BankDegrees);
 
     FArriettyFlightState OppositeControls;
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(OppositeControls, 24.0);

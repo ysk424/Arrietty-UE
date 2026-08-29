@@ -7,7 +7,7 @@
 
 namespace Arrietty
 {
-inline constexpr TCHAR Version[] = TEXT("0.9.0");
+inline constexpr TCHAR Version[] = TEXT("0.10.0");
 inline constexpr TCHAR SteeringControllerSerial[] = TEXT("LHR-9EFF8645");
 inline constexpr TCHAR RideSurfaceTag[] = TEXT("SecretWorldRideSurface");
 inline constexpr double EyeHeightMeters = 1.5;
@@ -34,6 +34,11 @@ inline constexpr double FlightStallSpeedKmh = 18.0;
 inline constexpr double FlightStallRecoverySpeedKmh = 20.5;
 inline constexpr double FlightMaxBankDegrees = 25.0;
 inline constexpr double FlightMaxPitchDegrees = 12.0;
+inline constexpr double FlightPitchRateDegreesPerSecond = 28.0;
+inline constexpr double FlightBankRateDegreesPerSecond = 55.0;
+inline constexpr double FlightControlReferenceSpeedKmh = 24.0;
+inline constexpr double FlightMinControlAuthority = 0.20;
+inline constexpr double FlightMaxControlAuthority = 1.75;
 inline constexpr double FlightMaxElevatorVerticalSpeedMps = 1.5;
 inline constexpr double FlightStallSinkSpeedMps = 2.0;
 inline constexpr double FlightMaxBankTurnRateDegrees = 18.0;
@@ -41,6 +46,8 @@ inline constexpr double FlightMaxRudderTurnRateDegrees = 10.0;
 inline constexpr double FlightControlDeadzone = 0.08;
 inline constexpr double FlightMaxPropellerThrustNewtons = 35.0;
 inline constexpr double FlightGroundRollingResistance = 0.012;
+inline constexpr double FlightPowerBoostMultiplier = 5.0;
+inline constexpr double FlightOverspeedWarningKmh = 60.0;
 }
 
 enum class EArriettyRideStatus : uint8
@@ -83,6 +90,9 @@ struct FArriettyFlightState
     double VerticalSpeedMetersPerSecond = 0.0;
     double BankDegrees = 0.0;
     double PitchDegrees = 0.0;
+    double FlightPathAngleDegrees = 0.0;
+    double AngleOfAttackDegrees = 0.0;
+    double ControlAuthority = Arrietty::FlightMinControlAuthority;
     double HeadingRateDegreesPerSecond = 0.0;
     bool bAirborne = false;
     bool bStalled = false;
@@ -107,6 +117,9 @@ struct FArriettyRideSnapshot
     double FtmsSpeedKmh = 0.0;
     double CadenceRpm = 0.0;
     int32 PowerWatts = 0;
+    double PropulsionPowerWatts = 0.0;
+    double PowerMultiplier = 1.0;
+    bool bPowerBoost5x = false;
     TOptional<uint16> HeartRateBpm;
     FString HeartRateStatus = TEXT("NOT CONNECTED");
     FString ControllerStatus = TEXT("SEARCHING: USB controller");
@@ -121,8 +134,12 @@ struct FArriettyRideSnapshot
     double VerticalSpeedMetersPerSecond = 0.0;
     double BankDegrees = 0.0;
     double PitchDegrees = 0.0;
+    double FlightPathAngleDegrees = 0.0;
+    double AngleOfAttackDegrees = 0.0;
+    double FlightControlAuthority = Arrietty::FlightMinControlAuthority;
     bool bAircraftAirborne = false;
     bool bAircraftStalled = false;
+    bool bAircraftOverspeed = false;
     int32 LapsCompleted = 0;
     bool bFlightEnabled = false;
     bool bSteeringTracking = false;
@@ -133,6 +150,10 @@ struct FArriettyRideSnapshot
     TOptional<int32> AppliedPreset;
     FVector2D PositionMeters = FVector2D::ZeroVector;
     double HeadingDegrees = 0.0;
+    bool bGeospatialNavigation = false;
+    double LongitudeDegrees = 0.0;
+    double LatitudeDegrees = 0.0;
+    double EllipsoidHeightMeters = 0.0;
     double AverageFps = 60.0;
 };
 

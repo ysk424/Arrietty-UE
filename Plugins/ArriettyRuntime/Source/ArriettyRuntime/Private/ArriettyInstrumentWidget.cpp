@@ -14,12 +14,16 @@
 #include "Components/VerticalBoxSlot.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/DateTime.h"
+#include "Rendering/DrawElements.h"
+#include "Widgets/SLeafWidget.h"
 
 namespace
 {
-const FLinearColor InstrumentGreen(0.04f, 1.0f, 0.12f, 1.0f);
-const FLinearColor InstrumentOrange(1.0f, 0.25f, 0.01f, 1.0f);
+const FLinearColor InstrumentGreen(0.05f, 0.95f, 0.45f, 1.0f);
+const FLinearColor InstrumentDimGreen(0.03f, 0.35f, 0.18f, 1.0f);
+const FLinearColor InstrumentOrange(1.0f, 0.58f, 0.02f, 1.0f);
 const FLinearColor InstrumentRed(1.0f, 0.04f, 0.08f, 1.0f);
+const FLinearColor InstrumentBlack(0.002f, 0.008f, 0.006f, 1.0f);
 
 UTextBlock* MakeInstrumentText(
     UWidgetTree* Tree,
@@ -37,12 +41,156 @@ UTextBlock* MakeInstrumentText(
     Text->SetShadowColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f, 0.85f));
     FSlateFontInfo Font = Text->GetFont();
     Font.Size = FontSize;
-    Font.OutlineSettings.OutlineSize = 1;
+    Font.OutlineSettings.OutlineSize = FontSize >= 30 ? 1 : 0;
     Font.OutlineSettings.OutlineColor = FLinearColor::Black;
     Text->SetFont(Font);
     Parent->AddChild(Text);
     return Text;
 }
+
+UBorder* MakePanel(UWidgetTree* Tree, UPanelWidget* Parent, const FMargin& Padding)
+{
+    UBorder* Panel = Tree->ConstructWidget<UBorder>();
+    Panel->SetBrushColor(InstrumentBlack);
+    Panel->SetPadding(Padding);
+    Parent->AddChild(Panel);
+    return Panel;
+}
+}
+
+class SArriettyAttitudeIndicator : public SLeafWidget
+{
+public:
+    SLATE_BEGIN_ARGS(SArriettyAttitudeIndicator) {}
+    SLATE_END_ARGS()
+
+    void Construct(const FArguments& InArgs)
+    {
+        SetCanTick(false);
+    }
+
+    void SetAttitude(double InPitchDegrees, double InBankDegrees, bool bInWarning)
+    {
+        PitchDegrees = FMath::Clamp(InPitchDegrees, -30.0, 30.0);
+        BankDegrees = FMath::Clamp(InBankDegrees, -45.0, 45.0);
+        bWarning = bInWarning;
+        Invalidate(EInvalidateWidgetReason::Paint);
+    }
+
+    virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override
+    {
+        return FVector2D(300.0, 255.0);
+    }
+
+    virtual int32 OnPaint(
+        const FPaintArgs& Args,
+        const FGeometry& AllottedGeometry,
+        const FSlateRect& MyCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32 LayerId,
+        const FWidgetStyle& InWidgetStyle,
+        bool bParentEnabled) const override
+    {
+        const FVector2D Size = AllottedGeometry.GetLocalSize();
+        const FVector2D Center = Size * 0.5;
+        const FLinearColor ActiveColor = bWarning ? InstrumentRed : InstrumentGreen;
+        const float BankRadians = FMath::DegreesToRadians(static_cast<float>(BankDegrees));
+        const FVector2D Across(FMath::Cos(BankRadians), FMath::Sin(BankRadians));
+        const FVector2D Up(-Across.Y, Across.X);
+        const FVector2D HorizonCenter = Center + Up * (PitchDegrees * 4.0);
+        const FPaintGeometry PaintGeometry = AllottedGeometry.ToPaintGeometry();
+
+        auto DrawLine = [&](int32 Layer, const FVector2D& A, const FVector2D& B,
+                            const FLinearColor& Color, float Thickness)
+        {
+            TArray<FVector2f> Points;
+            Points.Reserve(2);
+            Points.Add(FVector2f(A));
+            Points.Add(FVector2f(B));
+            FSlateDrawElement::MakeLines(
+                OutDrawElements,
+                Layer,
+                PaintGeometry,
+                Points,
+                ESlateDrawEffect::None,
+                Color,
+                true,
+                Thickness);
+        };
+
+        DrawLine(LayerId, FVector2D(1.0, 1.0), FVector2D(Size.X - 1.0, 1.0),
+            InstrumentDimGreen, 2.0f);
+        DrawLine(LayerId, FVector2D(Size.X - 1.0, 1.0), FVector2D(Size.X - 1.0, Size.Y - 1.0),
+            InstrumentDimGreen, 2.0f);
+        DrawLine(LayerId, FVector2D(Size.X - 1.0, Size.Y - 1.0), FVector2D(1.0, Size.Y - 1.0),
+            InstrumentDimGreen, 2.0f);
+        DrawLine(LayerId, FVector2D(1.0, Size.Y - 1.0), FVector2D(1.0, 1.0),
+            InstrumentDimGreen, 2.0f);
+
+        DrawLine(LayerId + 1, HorizonCenter - Across * Size.X, HorizonCenter + Across * Size.X,
+            ActiveColor, 4.0f);
+        for (int32 Degrees = -20; Degrees <= 20; Degrees += 5)
+        {
+            if (Degrees == 0)
+            {
+                continue;
+            }
+            const FVector2D LadderCenter = HorizonCenter - Up * (Degrees * 4.0);
+            const double HalfWidth = Degrees % 10 == 0 ? 50.0 : 28.0;
+            DrawLine(LayerId + 1,
+                LadderCenter - Across * HalfWidth,
+                LadderCenter + Across * HalfWidth,
+                InstrumentDimGreen,
+                Degrees % 10 == 0 ? 2.0f : 1.0f);
+        }
+
+        const FVector2D TopCenter(Center.X, 10.0);
+        DrawLine(LayerId + 2, TopCenter + FVector2D(-9.0, 12.0), TopCenter,
+            ActiveColor, 3.0f);
+        DrawLine(LayerId + 2, TopCenter, TopCenter + FVector2D(9.0, 12.0),
+            ActiveColor, 3.0f);
+        DrawLine(LayerId + 2, Center + FVector2D(-65.0, 0.0), Center + FVector2D(-18.0, 0.0),
+            ActiveColor, 5.0f);
+        DrawLine(LayerId + 2, Center + FVector2D(18.0, 0.0), Center + FVector2D(65.0, 0.0),
+            ActiveColor, 5.0f);
+        DrawLine(LayerId + 2, Center + FVector2D(-18.0, 0.0), Center + FVector2D(0.0, 10.0),
+            ActiveColor, 5.0f);
+        DrawLine(LayerId + 2, Center + FVector2D(0.0, 10.0), Center + FVector2D(18.0, 0.0),
+            ActiveColor, 5.0f);
+        return LayerId + 2;
+    }
+
+private:
+    double PitchDegrees = 0.0;
+    double BankDegrees = 0.0;
+    bool bWarning = false;
+};
+
+void UArriettyAttitudeIndicator::SetAttitude(
+    double InPitchDegrees,
+    double InBankDegrees,
+    bool bInWarning)
+{
+    PitchDegrees = InPitchDegrees;
+    BankDegrees = InBankDegrees;
+    bWarning = bInWarning;
+    if (SlateIndicator)
+    {
+        SlateIndicator->SetAttitude(PitchDegrees, BankDegrees, bWarning);
+    }
+}
+
+TSharedRef<SWidget> UArriettyAttitudeIndicator::RebuildWidget()
+{
+    SlateIndicator = SNew(SArriettyAttitudeIndicator);
+    SlateIndicator->SetAttitude(PitchDegrees, BankDegrees, bWarning);
+    return SlateIndicator.ToSharedRef();
+}
+
+void UArriettyAttitudeIndicator::ReleaseSlateResources(bool bReleaseChildren)
+{
+    Super::ReleaseSlateResources(bReleaseChildren);
+    SlateIndicator.Reset();
 }
 
 TSharedRef<SWidget> UArriettyInstrumentWidget::RebuildWidget()
@@ -59,66 +207,107 @@ TSharedRef<SWidget> UArriettyInstrumentWidget::RebuildWidget()
     WidgetTree->RootWidget = OuterBezel;
 
     UBorder* Screen = WidgetTree->ConstructWidget<UBorder>();
-    Screen->SetBrushColor(FLinearColor(0.002f, 0.006f, 0.003f, 1.0f));
-    Screen->SetPadding(FMargin(18.0f, 12.0f));
+    Screen->SetBrushColor(InstrumentBlack);
+    Screen->SetPadding(FMargin(14.0f, 10.0f));
     OuterBezel->SetContent(Screen);
 
     UVerticalBox* Root = WidgetTree->ConstructWidget<UVerticalBox>();
     Screen->SetContent(Root);
 
-    UHorizontalBox* SpeedRow = WidgetTree->ConstructWidget<UHorizontalBox>();
-    Root->AddChildToVerticalBox(SpeedRow);
-    SpeedText = MakeInstrumentText(
-        WidgetTree, SpeedRow, TEXT("0.0"), 96, InstrumentGreen, ETextJustify::Center);
-    UTextBlock* UnitText = MakeInstrumentText(
-        WidgetTree, SpeedRow, TEXT(" km/h"), 34, InstrumentGreen, ETextJustify::Right);
-    if (UHorizontalBoxSlot* SpeedSlot = Cast<UHorizontalBoxSlot>(SpeedText->Slot))
+    UHorizontalBox* Header = WidgetTree->ConstructWidget<UHorizontalBox>();
+    Root->AddChildToVerticalBox(Header);
+    UTextBlock* Title = MakeInstrumentText(
+        WidgetTree, Header, TEXT("ARRIETTY // WINGS OVER THE EARTH"), 20, InstrumentGreen);
+    ClockText = MakeInstrumentText(
+        WidgetTree, Header, TEXT("00:00:00"), 20, InstrumentOrange, ETextJustify::Right);
+    if (UHorizontalBoxSlot* TitleSlot = Cast<UHorizontalBoxSlot>(Title->Slot))
     {
-        SpeedSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-        SpeedSlot->SetHorizontalAlignment(HAlign_Center);
+        TitleSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     }
-    if (UHorizontalBoxSlot* UnitSlot = Cast<UHorizontalBoxSlot>(UnitText->Slot))
+    if (UHorizontalBoxSlot* ClockSlot = Cast<UHorizontalBoxSlot>(ClockText->Slot))
     {
-        UnitSlot->SetVerticalAlignment(VAlign_Bottom);
-        UnitSlot->SetPadding(FMargin(0.0f, 0.0f, 20.0f, 8.0f));
+        ClockSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     }
 
-    UHorizontalBox* SensorRow = WidgetTree->ConstructWidget<UHorizontalBox>();
-    Root->AddChildToVerticalBox(SensorRow);
-    HeartRateText = MakeInstrumentText(WidgetTree, SensorRow, TEXT("HR  --- bpm"), 35, InstrumentOrange);
-    ClockText = MakeInstrumentText(WidgetTree, SensorRow, TEXT("00:00:00"), 35, InstrumentOrange, ETextJustify::Right);
-    if (UHorizontalBoxSlot* HeartSlot = Cast<UHorizontalBoxSlot>(HeartRateText->Slot))
+    UHorizontalBox* MainRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+    if (UVerticalBoxSlot* MainSlot = Root->AddChildToVerticalBox(MainRow))
     {
-        HeartSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        MainSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        MainSlot->SetPadding(FMargin(0.0f, 7.0f));
     }
-    if (UHorizontalBoxSlot* TimeSlot = Cast<UHorizontalBoxSlot>(ClockText->Slot))
+
+    USizeBox* SpeedSize = WidgetTree->ConstructWidget<USizeBox>();
+    SpeedSize->SetWidthOverride(250.0f);
+    MainRow->AddChildToHorizontalBox(SpeedSize);
+    UBorder* SpeedPanel = WidgetTree->ConstructWidget<UBorder>();
+    SpeedPanel->SetBrushColor(InstrumentBlack);
+    SpeedPanel->SetPadding(FMargin(4.0f));
+    SpeedSize->SetContent(SpeedPanel);
+    UVerticalBox* SpeedColumn = WidgetTree->ConstructWidget<UVerticalBox>();
+    SpeedPanel->SetContent(SpeedColumn);
+    MakeInstrumentText(
+        WidgetTree, SpeedColumn, TEXT("AIRSPEED"), 18, InstrumentDimGreen, ETextJustify::Center);
+    SpeedText = MakeInstrumentText(
+        WidgetTree, SpeedColumn, TEXT("0.0"), 82, InstrumentGreen, ETextJustify::Center);
+    MakeInstrumentText(
+        WidgetTree, SpeedColumn, TEXT("km/h"), 24, InstrumentGreen, ETextJustify::Center);
+    SpeedCueText = MakeInstrumentText(
+        WidgetTree, SpeedColumn, TEXT("GROUND ROLL"), 19, InstrumentOrange, ETextJustify::Center);
+    PowerText = MakeInstrumentText(
+        WidgetTree, SpeedColumn, TEXT("RIDER    0 W\nPROP     0 W\nPOWER   x1"), 20, InstrumentGreen);
+
+    USizeBox* AttitudeSize = WidgetTree->ConstructWidget<USizeBox>();
+    AttitudeSize->SetWidthOverride(310.0f);
+    AttitudeSize->SetHeightOverride(275.0f);
+    if (UHorizontalBoxSlot* AttitudeSlot = MainRow->AddChildToHorizontalBox(AttitudeSize))
     {
-        TimeSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        AttitudeSlot->SetPadding(FMargin(9.0f, 0.0f));
+        AttitudeSlot->SetVerticalAlignment(VAlign_Center);
+    }
+    AttitudeIndicator = WidgetTree->ConstructWidget<UArriettyAttitudeIndicator>();
+    AttitudeIndicator->SetClipping(EWidgetClipping::ClipToBounds);
+    AttitudeSize->SetContent(AttitudeIndicator);
+
+    UBorder* DataPanel = MakePanel(WidgetTree, MainRow, FMargin(5.0f));
+    if (UHorizontalBoxSlot* DataSlot = Cast<UHorizontalBoxSlot>(DataPanel->Slot))
+    {
+        DataSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+    }
+    FlightDataText = MakeInstrumentText(
+        WidgetTree,
+        DataPanel,
+        TEXT("ALT     0.0 m\nV/S    +0.0 m/s\nHDG      000\nPITCH  +0.0\nBANK   +0.0\nFPA    +0.0\nAOA    +0.0"),
+        21,
+        InstrumentGreen);
+
+    UHorizontalBox* Footer = WidgetTree->ConstructWidget<UHorizontalBox>();
+    Root->AddChildToVerticalBox(Footer);
+    SensorText = MakeInstrumentText(
+        WidgetTree, Footer, TEXT("CAD   0 rpm  HR ---  DIST 0 m"), 19, InstrumentGreen);
+    PositionText = MakeInstrumentText(
+        WidgetTree, Footer, TEXT("X +0.0  Y +0.0 m"), 17, InstrumentDimGreen, ETextJustify::Right);
+    if (UHorizontalBoxSlot* SensorSlot = Cast<UHorizontalBoxSlot>(SensorText->Slot))
+    {
+        SensorSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+    }
+    if (UHorizontalBoxSlot* PositionSlot = Cast<UHorizontalBoxSlot>(PositionText->Slot))
+    {
+        PositionSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     }
 
     USizeBox* HeartRateBarSize = WidgetTree->ConstructWidget<USizeBox>();
-    HeartRateBarSize->SetHeightOverride(12.0f);
+    HeartRateBarSize->SetHeightOverride(7.0f);
     Root->AddChildToVerticalBox(HeartRateBarSize);
     HeartRateBar = WidgetTree->ConstructWidget<UProgressBar>();
     HeartRateBar->SetPercent(0.0f);
-    HeartRateBar->SetFillColorAndOpacity(InstrumentRed);
+    HeartRateBar->SetFillColorAndOpacity(InstrumentOrange);
     HeartRateBarSize->SetContent(HeartRateBar);
 
-    RideDataText = MakeInstrumentText(
-        WidgetTree,
-        Root,
-        TEXT("CAD   0 rpm    PWR    0 W\nDIST    0 m     LAP    0\nALT   0.0 m     GROUND P5"),
-        29,
-        InstrumentGreen);
-    PositionText = MakeInstrumentText(
-        WidgetTree, Root, TEXT("X +0.0   Y +0.0 m"), 25, InstrumentGreen);
     StatusText = MakeInstrumentText(
-        WidgetTree, Root, TEXT("SYSTEM READY"), 22, InstrumentOrange, ETextJustify::Center);
+        WidgetTree, Root, TEXT("SYSTEM READY"), 18, InstrumentOrange, ETextJustify::Center);
     StatusText->SetAutoWrapText(true);
 
-    // A native UUserWidget must populate its WidgetTree before the base
-    // RebuildWidget takes the root. Building it from NativeConstruct is too
-    // late: WidgetComponent has already cached the empty SSpacer by then.
+    // Native widgets must populate WidgetTree before the base class caches it.
     return Super::RebuildWidget();
 }
 
@@ -130,59 +319,118 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
         return;
     }
     LastUpdateSeconds = Now;
+
+    const bool bFlightWarning = Snapshot.bAircraftStalled || Snapshot.bAircraftOverspeed;
+    const FLinearColor SpeedColor = bFlightWarning ? InstrumentRed : InstrumentGreen;
     SpeedText->SetText(FText::FromString(FString::Printf(TEXT("%4.1f"), Snapshot.SpeedKmh)));
+    SpeedText->SetColorAndOpacity(FSlateColor(SpeedColor));
+
+    FString SpeedCue = TEXT("GROUND SPEED");
+    FLinearColor SpeedCueColor = InstrumentOrange;
+    if (Snapshot.bFlightEnabled)
+    {
+        if (!Snapshot.bAircraftAirborne)
+        {
+            SpeedCue = Snapshot.SpeedKmh >= Arrietty::TakeoffSpeedKmh
+                ? TEXT("ROTATE")
+                : TEXT("TAKEOFF 20");
+        }
+        else if (Snapshot.bAircraftOverspeed)
+        {
+            SpeedCue = TEXT("OVERSPEED");
+            SpeedCueColor = InstrumentRed;
+        }
+        else if (Snapshot.bAircraftStalled ||
+            Snapshot.SpeedKmh < Arrietty::FlightStallSpeedKmh)
+        {
+            SpeedCue = TEXT("STALL");
+            SpeedCueColor = InstrumentRed;
+        }
+        else if (Snapshot.SpeedKmh < Arrietty::FlightStallRecoverySpeedKmh)
+        {
+            SpeedCue = TEXT("RECOVERY BAND");
+        }
+        else
+        {
+            SpeedCue = FString::Printf(
+                TEXT("CONTROL x%.2f"), Snapshot.FlightControlAuthority);
+            SpeedCueColor = InstrumentGreen;
+        }
+    }
+    SpeedCueText->SetText(FText::FromString(SpeedCue));
+    SpeedCueText->SetColorAndOpacity(FSlateColor(SpeedCueColor));
+
+    PowerText->SetText(FText::FromString(FString::Printf(
+        TEXT("RIDER %4d W\nPROP  %4.0f W\nPOWER   x%.0f"),
+        Snapshot.PowerWatts,
+        Snapshot.PropulsionPowerWatts,
+        Snapshot.PowerMultiplier)));
+    PowerText->SetColorAndOpacity(FSlateColor(
+        Snapshot.bPowerBoost5x ? InstrumentOrange : InstrumentGreen));
+
+    if (AttitudeIndicator)
+    {
+        AttitudeIndicator->SetAttitude(
+            Snapshot.PitchDegrees,
+            Snapshot.BankDegrees,
+            bFlightWarning);
+    }
+
+    const int32 HeadingDegrees = FMath::RoundToInt(
+        FMath::Fmod(Snapshot.HeadingDegrees + 360.0, 360.0)) % 360;
+    FlightDataText->SetText(FText::FromString(FString::Printf(
+        TEXT("ALT   %6.1f m\nV/S   %+6.1f m/s\nHDG      %03d\nPITCH %+6.1f\nBANK  %+6.1f\nFPA   %+6.1f\nAOA   %+6.1f"),
+        Snapshot.AltitudeMeters,
+        Snapshot.VerticalSpeedMetersPerSecond,
+        HeadingDegrees,
+        Snapshot.PitchDegrees,
+        Snapshot.BankDegrees,
+        Snapshot.FlightPathAngleDegrees,
+        Snapshot.AngleOfAttackDegrees)));
+    FlightDataText->SetColorAndOpacity(FSlateColor(
+        bFlightWarning ? InstrumentRed : InstrumentGreen));
+
+    const FString Distance = Snapshot.DistanceMeters < 1000.0
+        ? FString::Printf(TEXT("%.0f m"), Snapshot.DistanceMeters)
+        : FString::Printf(TEXT("%.2f km"), Snapshot.DistanceMeters / 1000.0);
+    const FString HeartRate = Snapshot.HeartRateBpm.IsSet()
+        ? FString::Printf(TEXT("%u"), Snapshot.HeartRateBpm.GetValue())
+        : TEXT("---");
+    SensorText->SetText(FText::FromString(FString::Printf(
+        TEXT("CAD %3.0f rpm  HR %s  DIST %s"),
+        Snapshot.CadenceRpm,
+        *HeartRate,
+        *Distance)));
     if (Snapshot.HeartRateBpm.IsSet())
     {
-        const uint16 HeartRate = Snapshot.HeartRateBpm.GetValue();
-        HeartRateText->SetText(FText::FromString(FString::Printf(TEXT("HR  %3u bpm"), HeartRate)));
-        HeartRateText->SetColorAndOpacity(FSlateColor(
-            HeartRate >= 170 ? InstrumentRed : InstrumentOrange));
-        HeartRateBar->SetPercent(FMath::Clamp((static_cast<float>(HeartRate) - 40.0f) / 160.0f, 0.0f, 1.0f));
+        const uint16 HeartRateValue = Snapshot.HeartRateBpm.GetValue();
+        HeartRateBar->SetPercent(FMath::Clamp(
+            (static_cast<float>(HeartRateValue) - 40.0f) / 160.0f, 0.0f, 1.0f));
+        HeartRateBar->SetFillColorAndOpacity(
+            HeartRateValue >= 170 ? InstrumentRed : InstrumentOrange);
     }
     else
     {
-        HeartRateText->SetText(FText::FromString(TEXT("HR  --- bpm")));
-        HeartRateText->SetColorAndOpacity(FSlateColor(InstrumentOrange));
         HeartRateBar->SetPercent(0.0f);
     }
+
     ClockText->SetText(FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S"))));
-    const FString Distance = Snapshot.DistanceMeters < 1000.0
-        ? FString::Printf(TEXT("%5.0f m"), Snapshot.DistanceMeters)
-        : FString::Printf(TEXT("%5.2f km"), Snapshot.DistanceMeters / 1000.0);
-    const int32 Preset = Snapshot.AppliedPreset.IsSet()
-        ? Snapshot.AppliedPreset.GetValue()
-        : Snapshot.SelectedPreset;
-    const FString RideData = Snapshot.bFlightEnabled
+    const FString Position = Snapshot.bGeospatialNavigation
         ? FString::Printf(
-            TEXT("CAD %3.0f rpm   PWR %4d W   BRK %.1f%%\nDIST %s   ALT %5.1f m   VS %+4.1f\nBANK %+4.1f   PITCH %+4.1f   %s\nAIR %s   L/D %.0f   MASS %.0f kg"),
-            Snapshot.CadenceRpm,
-            Snapshot.PowerWatts,
-            Snapshot.AppliedGradePercent,
-            *Distance,
-            Snapshot.AltitudeMeters,
-            Snapshot.VerticalSpeedMetersPerSecond,
-            Snapshot.BankDegrees,
-            Snapshot.PitchDegrees,
-            Snapshot.bAircraftStalled ? TEXT("STALL") : TEXT("OK"),
-            Snapshot.bAircraftAirborne ? TEXT("AIRBORNE") : TEXT("GROUND ROLL"),
-            Arrietty::FlightGlideRatio,
-            Arrietty::FlightEffectiveMassKg)
+            TEXT("LON %.6f  LAT %.6f  H %.1f m"),
+            Snapshot.LongitudeDegrees,
+            Snapshot.LatitudeDegrees,
+            Snapshot.EllipsoidHeightMeters)
         : FString::Printf(
-            TEXT("CAD %3.0f rpm    PWR %4d W\nDIST %s  LAP %4d\nALT %5.1f m   GROUND P%d  BRK %.1f%%  FPS %4.1f"),
-            Snapshot.CadenceRpm,
-            Snapshot.PowerWatts,
-            *Distance,
-            Snapshot.LapsCompleted,
-            Snapshot.AltitudeMeters,
-            Preset,
-            Snapshot.AppliedGradePercent,
-            Snapshot.AverageFps);
-    RideDataText->SetText(FText::FromString(RideData));
-    PositionText->SetText(FText::FromString(FString::Printf(
-        TEXT("X %+.1f   Y %+.1f m"), Snapshot.PositionMeters.X, Snapshot.PositionMeters.Y)));
+            TEXT("X %+.1f  Y %+.1f m"),
+            Snapshot.PositionMeters.X,
+            Snapshot.PositionMeters.Y);
+    PositionText->SetText(FText::FromString(Position));
+
     StatusText->SetText(FText::FromString(Snapshot.Message));
-    const bool bWarning = Snapshot.Status == EArriettyRideStatus::Error ||
-        Snapshot.bAircraftStalled ||
+    const bool bStatusWarning = Snapshot.Status == EArriettyRideStatus::Error ||
+        bFlightWarning ||
         Snapshot.Message.StartsWith(TEXT("Ride paused;"));
-    StatusText->SetColorAndOpacity(FSlateColor(bWarning ? InstrumentRed : InstrumentOrange));
+    StatusText->SetColorAndOpacity(FSlateColor(
+        bStatusWarning ? InstrumentRed : InstrumentOrange));
 }
