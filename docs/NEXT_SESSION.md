@@ -15,25 +15,28 @@
 - 実機ではGoogle地表と空、Joystick 2の上下左右、テンキーによる開始と飛行モードまで確認した。旧100 m滑走路端で止まった問題に対して上記2 km面を追加したが、追加後の自転車実走は未確認。
 - ESP32用の独立診断ファームウェアを追加し、4軸の全範囲とButton 1/2/3/4/6、Joystick 1/2 SWをGPIO直読で確認した。
 - Button 5が反応しない原因はGPIOやソフトではなく、Button 5の半田切れだと実機で確認した。
+- 終了前にButton 5の半田修理を完了した。製品版button maskと`POWER x1/x5`の実動作確認は次回行う。
 - 製品ファームウェアには短い押下を最低100 ms報告するラッチを追加した。診断後に製品ファームウェアをCOM7へ戻し、`PING`、状態パケット、50 Hz stream、flash hashを確認した。
+- Cesium実行記録のtile countは15枚だった。Google地表が動作したことは、人力フライトシミュレーターとしての大きな到達点である。
 
 ## 終了時の状態
 
 - Earth Levelは保存済み。PIE／VR Previewは停止済み。
 - ESP32には診断版ではなく製品版ファームウェアが入っている。
-- Button 5の半田修理は未完。作業のためボタン側コネクターは外してある。USB電源を切った状態で修理・再接続してから試験する。
+- Button 5の半田修理は完了。次回、USB電源を切った状態でコネクターとGNDを確認してから実動作試験する。
 - Cesium ionのproject access tokenはローカルの`Content/CesiumSettings/`だけにあり、Git対象外。値を文書、ログ、スクリーンショットへ出さない。
 - `.agents/`、`.claude/`、`.neostack/`も端末固有のEditor agent設定としてGit対象外。
 
 ## 次回の順序
 
-1. USBを外した状態でButton 5を半田修理し、ボタンコネクターとGNDを再接続する。
+1. USBを外した状態でButton 5、ボタンコネクター、GNDに短絡や緩みがないことを確認する。
 2. USB接続後はジョイスティックへ約1秒触れず、`pwsh -File .\Tools\ESP32-Controller.ps1 -Action Test`を実行する。
-3. 診断版へ書き換えず、製品版のbutton maskでButton 1、2、5、6を確認する。Button 5の修理が間に合わない場合は1、2、6だけで続行する。
-4. Earth Levelを通常PIEで開き、Button 1で開始、Button 2で飛行モード、Joystick 2でPitch／Bankが動くことを確認する。
-5. 20 km/h以上で離陸し、可視滑走路の先へ進めることを確認する。2 km面の終端まで走り切る必要はない。
-6. 続いてSteamVR/OpenXR、HMD、T2を使い、Button 5 `POWER x1/x5`、失速・回復、着陸、地理座標の連続性を確認する。
-7. タイトル画像`C:\Users\azoo\Desktop\ARRIETTY.png`の`/Game/Brand/ARRIETTY`へのimport、Map Check、Earth Levelを含むcook/packageを完了する。
+3. 診断版へ書き換えず、製品版のbutton maskでButton 1、2、5、6を確認する。
+4. HMD内で計器panelが視界を妨げず、走行中に読みやすい位置・距離・角度へ調整する。
+5. Joystick 2のデッドゾーン、感度、応答曲線、Pitch／Bankの到達速度を実走で調整する。中央付近の抵抗感と、動き始めが急にならないことを重点確認する。
+6. Earth LevelでButton 1開始、Button 2飛行モード、Button 5 `POWER x1/x5`、20 km/h以上からの離陸を確認し、可視滑走路の先へ進めることを確認する。
+7. 続いて失速・回復、着陸、地理座標の連続性とCesium tile countを記録する。
+8. タイトル画像`C:\Users\azoo\Desktop\ARRIETTY.png`の`/Game/Brand/ARRIETTY`へのimport、Map Check、Earth Levelを含むcook/packageを完了する。
 
 ## 固定値と未完項目
 
@@ -42,7 +45,7 @@
 - Google ion asset: `2275207`
 - Google Tiles: SSE `16`、credits `true`、Movable
 - CourseStart: longitude `179.19678290`、latitude `-8.52398430`、ellipsoid height 約`41.8356 m`、World Z `700 cm`
-- 未完: Button 5半田修理、2 km rolloutの実機再試験、Button 1/2の製品版再試験、タイトル画像import、Map Check、Earth cook/package、v0.10.0最終HMD＋T2受入試験。
+- 未完: Button 5修理後の実動作確認、計器panel位置調整、Joystick 2感度／デッドゾーン／動き始め調整、2 km rolloutの実機再試験、タイトル画像import、Map Check、Earth cook/package、v0.10.0最終HMD＋T2受入試験。
 
 ## 既存の基準記録
 

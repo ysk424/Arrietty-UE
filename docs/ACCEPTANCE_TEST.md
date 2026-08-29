@@ -11,7 +11,7 @@
 
 ## ESP32有線操作盤
 
-> 2026-08-29時点ではButton 5の半田切れが判明している。修理前はButton 5の項目だけ保留し、Button 1/2/6と両ジョイスティックの試験を続けてよい。作業で外したボタンコネクターはUSB電源を切ってから再接続する。
+> 2026-08-29にButton 5の半田切れを修理した。次回はUSB電源を切ってコネクターとGNDを確認してから再接続し、Button 5のbutton maskと`POWER x1/x5`を最初に再試験する。
 
 1. 両ジョイスティックを中央に置いてUSBケーブルを接続し、約1秒触れない。
 2. `pwsh -File .\Tools\ESP32-Controller.ps1 -Action Test`が`ARRIETTY CONTROLLER TEST PASSED`になることを確認する。

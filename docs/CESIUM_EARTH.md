@@ -39,6 +39,8 @@ Googleタイルは写実背景であり、走行／着陸判定には使わな�
 
 低いViewportで見えた黒い帯はGoogle Tilesの地表Primitiveを下側から見たものだった。開始点を地表より上へ移し、滑走路の上面をWorld Z `700 cm`に合わせた。通常PIEの開始・停止と地表・空の表示は確認済みで、2 km rollout追加後の自転車実走は次回確認する。
 
+2026-08-29の実機記録ではCesiumのtile countは15枚だった。数値は次回も同じ表示箇所で記録し、視界、FPS、読み込み待ちとの関係を比較する。
+
 ## 認証
 
 Cesium for UnrealのCesium ionパネルでサインインし、プロジェクト用access tokenを設定する。tokenをソース、Markdown、ログ、`.env`へ転記しない。ローカルで生成される`Content/CesiumSettings/`はGit対象外であり、clone先では各自のtokenを設定する。
