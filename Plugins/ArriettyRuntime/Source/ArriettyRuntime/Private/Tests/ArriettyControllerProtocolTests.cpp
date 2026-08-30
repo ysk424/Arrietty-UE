@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ArriettyControllerProtocol.h"
+#include "ArriettyDigitalFlightControls.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -27,7 +28,7 @@ bool FArriettyControllerProtocolTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Button 4 pressed"), ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 3));
     TestTrue(TEXT("Joystick 2 switch pressed"), ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 7));
     TestFalse(TEXT("Button 2 not pressed"), ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 1));
-    TestTrue(TEXT("Button 5 power boost bit"), ArriettyControllerProtocol::IsPressed(0x10, 4));
+    TestTrue(TEXT("Button 5 PTT bit"), ArriettyControllerProtocol::IsPressed(0x10, 4));
     TestTrue(TEXT("Button 6 brake bit"), ArriettyControllerProtocol::IsPressed(0x20, 5));
 
     TestFalse(TEXT("Wrong version rejected"), ArriettyControllerProtocol::ParseStateLine(
@@ -40,6 +41,53 @@ bool FArriettyControllerProtocolTest::RunTest(const FString& Parameters)
         TEXT("A1,42,0,0,0,0,256"), Sample));
     TestFalse(TEXT("Non-numeric field rejected"), ArriettyControllerProtocol::ParseStateLine(
         TEXT("A1,not-a-number,0,0,0,0,0"), Sample));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FArriettyDigitalFlightControlsTest,
+    "Arrietty.Controller.Digital Flight Controls",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FArriettyDigitalFlightControlsTest::RunTest(const FString& Parameters)
+{
+    FArriettyDigitalFlightControls Controls;
+    Controls.Reset();
+
+    Controls.UpdateJoystick(FVector2D(0.80, 0.0));
+    TestEqual(TEXT("First pull adds one pitch degree"), Controls.GetPitchDegrees(), 1.0);
+    Controls.UpdateJoystick(FVector2D(1.0, 0.0));
+    TestEqual(TEXT("Holding pitch does not repeat"), Controls.GetPitchDegrees(), 1.0);
+    Controls.UpdateJoystick(FVector2D::ZeroVector);
+    Controls.UpdateJoystick(FVector2D(0.46, 0.0));
+    TestEqual(TEXT("Returning to center rearms pitch"), Controls.GetPitchDegrees(), 2.0);
+
+    Controls.UpdateJoystick(FVector2D::ZeroVector);
+    Controls.UpdateJoystick(FVector2D(0.0, -0.80));
+    TestEqual(TEXT("Installed J2 right adds one right-roll degree"),
+        Controls.GetRollRightDegrees(), 1.0);
+    TestTrue(TEXT("Right-roll command maps to the existing right-bank aileron sign"),
+        Controls.GetAileronInput() < 0.0);
+    Controls.UpdateJoystick(FVector2D::ZeroVector);
+    Controls.UpdateJoystick(FVector2D(0.0, 0.80));
+    TestEqual(TEXT("J2 left subtracts one right-roll degree"),
+        Controls.GetRollRightDegrees(), 0.0);
+
+    Controls.StepRollRight(-1);
+    Controls.StepPitch(-1);
+    Controls.ResetCommands(FVector2D::ZeroVector);
+    TestEqual(TEXT("J2 center button resets roll"), Controls.GetRollRightDegrees(), 0.0);
+    TestEqual(TEXT("J2 center button resets pitch"), Controls.GetPitchDegrees(), 0.0);
+
+    for (int32 Index = 0; Index < 100; ++Index)
+    {
+        Controls.StepPitch(1);
+        Controls.StepRollRight(1);
+    }
+    TestEqual(TEXT("Pitch command clamps at the aircraft limit"),
+        Controls.GetPitchDegrees(), Arrietty::FlightMaxPitchDegrees);
+    TestEqual(TEXT("Roll command clamps at the aircraft limit"),
+        Controls.GetRollRightDegrees(), Arrietty::FlightMaxBankDegrees);
     return true;
 }
 

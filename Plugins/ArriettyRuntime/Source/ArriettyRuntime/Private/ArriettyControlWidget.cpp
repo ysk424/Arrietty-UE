@@ -150,10 +150,14 @@ void UArriettyControlWidget::NativeConstruct()
     InstrumentButton->OnClicked.AddDynamic(this, &UArriettyControlWidget::OnToggleInstrument);
     InstrumentStatusText = AddText(Root, TEXT("Anchor: HIDDEN"), 12, FLinearColor(0.75f, 0.8f, 0.85f));
     InstrumentStatusText->SetAutoWrapText(true);
-    USpinBox* Forward = AddSetting(Root, TEXT("Forward (m)"), 0.0, -0.5, 0.5);
-    USpinBox* Side = AddSetting(Root, TEXT("Side (m)"), 0.0, -0.5, 0.5);
-    USpinBox* Height = AddSetting(Root, TEXT("Height (m)"), 0.10, -0.5, 0.5);
-    USpinBox* Scale = AddSetting(Root, TEXT("Scale"), 1.0, 0.5, 2.0);
+    USpinBox* Forward = AddSetting(
+        Root, TEXT("Forward (m)"), InitialPawn ? InitialPawn->GetPanelForwardOffsetMeters() : 0.20, -0.5, 0.5);
+    USpinBox* Side = AddSetting(
+        Root, TEXT("Side (m)"), InitialPawn ? InitialPawn->GetPanelSideOffsetMeters() : 0.0, -0.5, 0.5);
+    USpinBox* Height = AddSetting(
+        Root, TEXT("Height (m)"), InitialPawn ? InitialPawn->GetPanelHeightOffsetMeters() : 0.30, -0.5, 0.5);
+    USpinBox* Scale = AddSetting(
+        Root, TEXT("Scale"), InitialPawn ? InitialPawn->GetPanelScale() : 1.0, 0.5, 2.0);
     Forward->OnValueChanged.AddDynamic(this, &UArriettyControlWidget::OnPanelForwardChanged);
     Side->OnValueChanged.AddDynamic(this, &UArriettyControlWidget::OnPanelSideChanged);
     Height->OnValueChanged.AddDynamic(this, &UArriettyControlWidget::OnPanelHeightChanged);
@@ -255,13 +259,14 @@ void UArriettyControlWidget::Refresh()
         Pawn->IsVrSessionActive() ? TEXT("Back to Real World") : TEXT("Dive into Secret World")));
     VrStatusText->SetText(FText::FromString(Pawn->GetVrStatusText()));
     ControllerStatusText->SetText(FText::FromString(FString::Printf(
-        TEXT("%s\nJ1 X %+.2f  Y %+.2f   J2 X %+.2f  Y %+.2f   Buttons 0x%02X   B6 %s"),
+        TEXT("%s\nJ1 X %+.2f  Y %+.2f   J2 X %+.2f  Y %+.2f   Buttons 0x%02X\nB5 %s   B6 %s"),
         *State.ControllerStatus,
         State.ControllerJoystick1.X,
         State.ControllerJoystick1.Y,
         State.ControllerJoystick2.X,
         State.ControllerJoystick2.Y,
         State.ControllerButtonMask,
+        *State.VoiceStatus,
         State.bBrakeButtonHeld ? TEXT("BRAKE") : TEXT("released"))));
     ControllerStatusText->SetColorAndOpacity(FSlateColor(
         State.bControllerConnected
@@ -306,7 +311,7 @@ void UArriettyControlWidget::Refresh()
     FlightButtonLabel->SetText(FText::FromString(
         State.bFlightEnabled ? TEXT("Return to Ground (Numpad 7)") : TEXT("Enable Flight (Numpad 7)")));
     FlightStatusText->SetText(FText::FromString(FString::Printf(
-        TEXT("Mode: %s   %s   Altitude %.1f m   VS %+.2f m/s\nAirspeed %.1f km/h   Bank %+.1f degrees   Pitch %+.1f degrees   %s   XY: %s"),
+        TEXT("Mode: %s   %s   Altitude %.1f m   VS %+.2f m/s\nAirspeed %.1f km/h   Bank %+.1f degrees   Pitch %+.1f degrees\nCommand: Roll Right %+.0f degrees   Pitch Up %+.0f degrees   %s   XY: %s"),
         State.bFlightEnabled ? TEXT("FLIGHT") : TEXT("GROUND"),
         State.bAircraftAirborne ? TEXT("AIRBORNE") : TEXT("ON GROUND"),
         State.AltitudeMeters,
@@ -314,6 +319,8 @@ void UArriettyControlWidget::Refresh()
         State.SpeedKmh,
         State.BankDegrees,
         State.PitchDegrees,
+        State.CommandedRollRightDegrees,
+        State.CommandedPitchDegrees,
         State.bAircraftStalled ? TEXT("STALL") : TEXT("OK"),
         State.bFlightEnabled ? TEXT("FREE") : TEXT("RIDE SURFACE"))));
     InstrumentButtonLabel->SetText(FText::FromString(

@@ -254,7 +254,7 @@ TSharedRef<SWidget> UArriettyInstrumentWidget::RebuildWidget()
     SpeedCueText = MakeInstrumentText(
         WidgetTree, SpeedColumn, TEXT("GROUND ROLL"), 19, InstrumentOrange, ETextJustify::Center);
     PowerText = MakeInstrumentText(
-        WidgetTree, SpeedColumn, TEXT("RIDER    0 W\nPROP     0 W\nPOWER   x1"), 20, InstrumentGreen);
+        WidgetTree, SpeedColumn, TEXT("RIDER    0 W\nPROP     0 W\nPTT READY"), 20, InstrumentGreen);
 
     USizeBox* AttitudeSize = WidgetTree->ConstructWidget<USizeBox>();
     AttitudeSize->SetWidthOverride(310.0f);
@@ -276,7 +276,7 @@ TSharedRef<SWidget> UArriettyInstrumentWidget::RebuildWidget()
     FlightDataText = MakeInstrumentText(
         WidgetTree,
         DataPanel,
-        TEXT("ALT     0.0 m\nV/S    +0.0 m/s\nHDG      000\nPITCH  +0.0\nBANK   +0.0\nFPA    +0.0\nAOA    +0.0"),
+        TEXT("ALT     0.0 m\nV/S    +0.0 m/s\nHDG      000\nPITCH  +0.0\nBANK   +0.0\nCMD R  +0\nCMD P  +0\nFPA    +0.0\nAOA    +0.0"),
         21,
         InstrumentGreen);
 
@@ -361,12 +361,12 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     SpeedCueText->SetColorAndOpacity(FSlateColor(SpeedCueColor));
 
     PowerText->SetText(FText::FromString(FString::Printf(
-        TEXT("RIDER %4d W\nPROP  %4.0f W\nPOWER   x%.0f"),
+        TEXT("RIDER %4d W\nPROP  %4.0f W\n%s"),
         Snapshot.PowerWatts,
         Snapshot.PropulsionPowerWatts,
-        Snapshot.PowerMultiplier)));
+        *Snapshot.VoiceStatus)));
     PowerText->SetColorAndOpacity(FSlateColor(
-        Snapshot.bPowerBoost5x ? InstrumentOrange : InstrumentGreen));
+        Snapshot.bPushToTalkHeld ? InstrumentOrange : InstrumentGreen));
 
     if (AttitudeIndicator)
     {
@@ -379,12 +379,14 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     const int32 HeadingDegrees = FMath::RoundToInt(
         FMath::Fmod(Snapshot.HeadingDegrees + 360.0, 360.0)) % 360;
     FlightDataText->SetText(FText::FromString(FString::Printf(
-        TEXT("ALT   %6.1f m\nV/S   %+6.1f m/s\nHDG      %03d\nPITCH %+6.1f\nBANK  %+6.1f\nFPA   %+6.1f\nAOA   %+6.1f"),
+        TEXT("ALT   %6.1f m\nV/S   %+6.1f m/s\nHDG      %03d\nPITCH %+6.1f\nBANK  %+6.1f\nCMD R %+6.0f\nCMD P %+6.0f\nFPA   %+6.1f\nAOA   %+6.1f"),
         Snapshot.AltitudeMeters,
         Snapshot.VerticalSpeedMetersPerSecond,
         HeadingDegrees,
         Snapshot.PitchDegrees,
         Snapshot.BankDegrees,
+        Snapshot.CommandedRollRightDegrees,
+        Snapshot.CommandedPitchDegrees,
         Snapshot.FlightPathAngleDegrees,
         Snapshot.AngleOfAttackDegrees)));
     FlightDataText->SetColorAndOpacity(FSlateColor(

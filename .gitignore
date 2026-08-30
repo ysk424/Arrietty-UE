@@ -14,6 +14,10 @@ Saved/
 *.xcodeproj
 *.xcworkspace
 Dist/
+Tools/ArriettyVoiceBridge/bin/
+Tools/ArriettyVoiceBridge/obj/
+__pycache__/
+*.py[cod]
 cesium-request-cache.sqlite*
 
 # Local editor-agent state and credentials. These are machine-specific and may

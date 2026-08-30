@@ -188,13 +188,10 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
         95.3,
         0.2));
     TestEqual(TEXT("Normal propulsion uses rider power"),
-        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(150.0, false),
+        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(150.0),
         150.0);
-    TestEqual(TEXT("Button 5 boost multiplies propulsion power by five"),
-        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(150.0, true),
-        750.0);
     TestEqual(TEXT("Negative propulsion power is rejected"),
-        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(-10.0, true),
+        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(-10.0),
         0.0);
 
     const double LowSpeedAuthority =

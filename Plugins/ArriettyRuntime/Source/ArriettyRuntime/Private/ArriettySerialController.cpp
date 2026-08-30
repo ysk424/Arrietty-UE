@@ -220,6 +220,8 @@ void FArriettySerialController::WorkerMain()
 
             SendLine(Handle, "STREAM ON\n");
             double LastSampleAtSeconds = FPlatformTime::Seconds();
+            uint8 PreviousLoggedButtonMask = 0;
+            bool bHaveLoggedButtonMask = false;
             while (!bStopRequested.Load())
             {
                 FString Line;
@@ -228,6 +230,17 @@ void FArriettySerialController::WorkerMain()
                     FArriettyControllerSample Sample;
                     if (ArriettyControllerProtocol::ParseStateLine(Line, Sample))
                     {
+                        if (!bHaveLoggedButtonMask ||
+                            Sample.ButtonMask != PreviousLoggedButtonMask)
+                        {
+                            UE_LOG(LogArriettyController, Display,
+                                TEXT("Serial button mask on %s: 0x%02X -> 0x%02X"),
+                                *PortName,
+                                static_cast<uint32>(PreviousLoggedButtonMask),
+                                static_cast<uint32>(Sample.ButtonMask));
+                            PreviousLoggedButtonMask = Sample.ButtonMask;
+                            bHaveLoggedButtonMask = true;
+                        }
                         Sample.ReceivedAtSeconds = FPlatformTime::Seconds();
                         LastSampleAtSeconds = Sample.ReceivedAtSeconds;
                         FArriettyControllerEvent SampleEvent;

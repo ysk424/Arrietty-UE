@@ -11,9 +11,11 @@ constexpr uint32_t kBaudRate = 115200;
 constexpr uint32_t kStreamIntervalMs = 20;  // 50 Hz
 constexpr uint32_t kDebounceMs = 15;
 constexpr uint32_t kMinimumReportedPressMs = 100;
+constexpr uint8_t kMinimumReportedPressPackets = 5;
 constexpr int kAdcMaximum = 4095;
 constexpr int kAxisDeadzone = 160;
 constexpr size_t kCommandBufferSize = 96;
+constexpr size_t kPanelButtonCount = 6;
 
 // Joystick 1 mapping was measured on the assembled unit. Painted X+ is the
 // decreasing voltage on GPIO35, and painted Y+ is decreasing on GPIO34.
@@ -33,6 +35,11 @@ constexpr bool kJoystick2InvertY = false;
 constexpr uint8_t kDigitalPins[] = {18, 19, 21, 22, 23, 26, 13, 14};
 constexpr size_t kDigitalInputCount = sizeof(kDigitalPins) / sizeof(kDigitalPins[0]);
 
+enum class OperatingMode : uint8_t {
+  Normal,
+  Test,
+};
+
 char commandBuffer[kCommandBufferSize];
 size_t commandLength = 0;
 bool stablePressed[kDigitalInputCount] = {};
@@ -40,11 +47,16 @@ bool candidatePressed[kDigitalInputCount] = {};
 bool previousRawPressed[kDigitalInputCount] = {};
 uint32_t candidateChangedAtMs[kDigitalInputCount] = {};
 uint32_t reportPressedUntilMs[kDigitalInputCount] = {};
+uint8_t reportPressedPacketsRemaining[kDigitalInputCount] = {};
 int filteredAxes[4] = {};
 int axisCenters[4] = {};
 bool streaming = false;
 uint32_t sequenceNumber = 0;
 uint32_t lastStreamAtMs = 0;
+bool normalStreamBaselinePending = false;
+OperatingMode operatingMode = OperatingMode::Normal;
+uint32_t testSequenceNumber = 0;
+uint8_t testSeenMask = 0;
 
 int ReadAdc(uint8_t pin, bool invert) {
   const int value = analogRead(pin);
@@ -117,6 +129,11 @@ void UpdateDigitalInputs(uint32_t nowMs) {
     // release chatter and sustained input.
     if (pressed && !previousRawPressed[inputIndex]) {
       reportPressedUntilMs[inputIndex] = nowMs + kMinimumReportedPressMs;
+      if (operatingMode == OperatingMode::Test && inputIndex < kPanelButtonCount) {
+        testSeenMask |= static_cast<uint8_t>(1u << inputIndex);
+      } else if (operatingMode == OperatingMode::Normal) {
+        reportPressedPacketsRemaining[inputIndex] = kMinimumReportedPressPackets;
+      }
     }
     previousRawPressed[inputIndex] = pressed;
 
@@ -130,20 +147,59 @@ void UpdateDigitalInputs(uint32_t nowMs) {
   }
 }
 
+void ResetDigitalInputTracking() {
+  const uint32_t nowMs = millis();
+  for (size_t inputIndex = 0; inputIndex < kDigitalInputCount; ++inputIndex) {
+    const bool pressed = digitalRead(kDigitalPins[inputIndex]) == LOW;
+    stablePressed[inputIndex] = pressed;
+    candidatePressed[inputIndex] = pressed;
+    previousRawPressed[inputIndex] = pressed;
+    candidateChangedAtMs[inputIndex] = nowMs;
+    reportPressedUntilMs[inputIndex] = pressed
+        ? nowMs + kMinimumReportedPressMs
+        : 0;
+    reportPressedPacketsRemaining[inputIndex] = 0;
+  }
+}
+
+uint8_t ReadRawPanelButtonMask() {
+  uint8_t mask = 0;
+  for (size_t buttonIndex = 0; buttonIndex < kPanelButtonCount; ++buttonIndex) {
+    if (digitalRead(kDigitalPins[buttonIndex]) == LOW) {
+      mask |= static_cast<uint8_t>(1u << buttonIndex);
+    }
+  }
+  return mask;
+}
+
+uint8_t BuildStablePanelButtonMask() {
+  uint8_t mask = 0;
+  for (size_t buttonIndex = 0; buttonIndex < kPanelButtonCount; ++buttonIndex) {
+    if (stablePressed[buttonIndex]) {
+      mask |= static_cast<uint8_t>(1u << buttonIndex);
+    }
+  }
+  return mask;
+}
+
 uint8_t BuildButtonMask() {
   uint8_t mask = 0;
   const uint32_t nowMs = millis();
   for (size_t inputIndex = 0; inputIndex < kDigitalInputCount; ++inputIndex) {
     const bool reportLatchActive =
         static_cast<int32_t>(reportPressedUntilMs[inputIndex] - nowMs) > 0;
-    if (stablePressed[inputIndex] || reportLatchActive) {
+    if (stablePressed[inputIndex] || reportLatchActive ||
+        reportPressedPacketsRemaining[inputIndex] > 0) {
       mask |= static_cast<uint8_t>(1u << inputIndex);
     }
   }
   return mask;
 }
 
-void PrintState() {
+void PrintNormalState() {
+  const bool printBaseline = normalStreamBaselinePending;
+  const uint8_t buttonMask = printBaseline ? 0 : BuildButtonMask();
+  normalStreamBaselinePending = false;
   Serial.printf(
       "A1,%lu,%d,%d,%d,%d,%u\n",
       static_cast<unsigned long>(sequenceNumber++),
@@ -151,7 +207,41 @@ void PrintState() {
       NormalizeAxis(filteredAxes[1], axisCenters[1]),
       NormalizeAxis(filteredAxes[2], axisCenters[2]),
       NormalizeAxis(filteredAxes[3], axisCenters[3]),
-      static_cast<unsigned int>(BuildButtonMask()));
+      static_cast<unsigned int>(buttonMask));
+  if (!printBaseline) {
+    for (size_t inputIndex = 0; inputIndex < kDigitalInputCount; ++inputIndex) {
+      if (reportPressedPacketsRemaining[inputIndex] > 0) {
+        --reportPressedPacketsRemaining[inputIndex];
+      }
+    }
+  }
+}
+
+void PrintTestState() {
+  Serial.printf(
+      "T1,%lu,%u,%u,%u\n",
+      static_cast<unsigned long>(testSequenceNumber++),
+      static_cast<unsigned int>(ReadRawPanelButtonMask()),
+      static_cast<unsigned int>(BuildStablePanelButtonMask()),
+      static_cast<unsigned int>(testSeenMask));
+}
+
+void PrintState() {
+  if (operatingMode == OperatingMode::Test) {
+    PrintTestState();
+  } else {
+    PrintNormalState();
+  }
+}
+
+void SetOperatingMode(OperatingMode mode) {
+  streaming = false;
+  lastStreamAtMs = 0;
+  normalStreamBaselinePending = false;
+  operatingMode = mode;
+  testSeenMask = 0;
+  testSequenceNumber = 0;
+  ResetDigitalInputTracking();
 }
 
 void HandleCommand() {
@@ -159,25 +249,49 @@ void HandleCommand() {
 
   if (strcmp(commandBuffer, "PING") == 0) {
     Serial.println("PONG ARRIETTY-CONTROLLER/1");
+  } else if (strcmp(commandBuffer, "MODE") == 0) {
+    Serial.println(
+        operatingMode == OperatingMode::Test ? "MODE TEST" : "MODE NORMAL");
+  } else if (strcmp(commandBuffer, "MODE TEST") == 0) {
+    SetOperatingMode(OperatingMode::Test);
+    Serial.println("OK MODE TEST BUTTONS 1-6");
+  } else if (strcmp(commandBuffer, "MODE NORMAL") == 0) {
+    SetOperatingMode(OperatingMode::Normal);
+    Serial.println("OK MODE NORMAL");
+  } else if (strcmp(commandBuffer, "TEST RESET") == 0) {
+    if (operatingMode != OperatingMode::Test) {
+      Serial.println("ERR NOT_IN_TEST_MODE");
+    } else {
+      testSeenMask = 0;
+      Serial.println("OK TEST RESET");
+    }
   } else if (strcmp(commandBuffer, "READ") == 0) {
     PrintState();
   } else if (strcmp(commandBuffer, "STREAM ON") == 0) {
     streaming = true;
     lastStreamAtMs = 0;
+    normalStreamBaselinePending = operatingMode == OperatingMode::Normal;
     Serial.println("OK STREAM ON 50HZ");
   } else if (strcmp(commandBuffer, "STREAM OFF") == 0) {
     streaming = false;
+    normalStreamBaselinePending = false;
     Serial.println("OK STREAM OFF");
   } else if (strcmp(commandBuffer, "CAL") == 0) {
-    const bool wasStreaming = streaming;
-    streaming = false;
-    CalibrateAxes();
-    streaming = wasStreaming;
-    Serial.printf(
-        "OK CAL %d,%d,%d,%d\n",
-        axisCenters[0], axisCenters[1], axisCenters[2], axisCenters[3]);
+    if (operatingMode == OperatingMode::Test) {
+      Serial.println("ERR TEST_MODE");
+    } else {
+      const bool wasStreaming = streaming;
+      streaming = false;
+      CalibrateAxes();
+      streaming = wasStreaming;
+      Serial.printf(
+          "OK CAL %d,%d,%d,%d\n",
+          axisCenters[0], axisCenters[1], axisCenters[2], axisCenters[3]);
+    }
   } else if (strcmp(commandBuffer, "INFO") == 0) {
-    Serial.println("INFO ARRIETTY-CONTROLLER/1 ESP32-D0WD-V3 CH340 115200 50HZ");
+    Serial.println(
+        "INFO ARRIETTY-CONTROLLER/1 ESP32-D0WD-V3 CH340 115200 50HZ "
+        "MODES NORMAL,TEST TEST_PROTOCOL T1");
   } else if (commandLength > 0) {
     Serial.println("ERR UNKNOWN_COMMAND");
   }
@@ -208,15 +322,8 @@ void setup() {
 
   for (size_t inputIndex = 0; inputIndex < kDigitalInputCount; ++inputIndex) {
     pinMode(kDigitalPins[inputIndex], INPUT_PULLUP);
-    const bool pressed = digitalRead(kDigitalPins[inputIndex]) == LOW;
-    stablePressed[inputIndex] = pressed;
-    candidatePressed[inputIndex] = pressed;
-    previousRawPressed[inputIndex] = pressed;
-    candidateChangedAtMs[inputIndex] = millis();
-    reportPressedUntilMs[inputIndex] = pressed
-        ? candidateChangedAtMs[inputIndex] + kMinimumReportedPressMs
-        : 0;
   }
+  ResetDigitalInputTracking();
 
   delay(300);
   CalibrateAxes();

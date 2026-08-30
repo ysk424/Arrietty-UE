@@ -302,12 +302,9 @@ double ArriettyTrainerProtocol::HumanPoweredFlightControlAuthority(
     return NormalAuthority * (bStalled ? 0.25 : 1.0);
 }
 
-double ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(
-    double RiderPowerWatts,
-    bool bPowerBoost5x)
+double ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(double RiderPowerWatts)
 {
-    return FMath::Max(0.0, RiderPowerWatts) *
-        (bPowerBoost5x ? Arrietty::FlightPowerBoostMultiplier : 1.0);
+    return FMath::Max(0.0, RiderPowerWatts);
 }
 
 FArriettyFlightStepResult ArriettyTrainerProtocol::StepHumanPoweredFlight(

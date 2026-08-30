@@ -30,7 +30,7 @@ void InitializeHumanPoweredFlight(FArriettyFlightState& State, double InitialAir
 double HumanPoweredFlightDragNewtons(double AirspeedMetersPerSecond);
 double HumanPoweredLevelFlightPowerWatts(double AirspeedKmh);
 double HumanPoweredFlightControlAuthority(double AirspeedMetersPerSecond, bool bStalled);
-double HumanPoweredFlightPropulsionPowerWatts(double RiderPowerWatts, bool bPowerBoost5x);
+double HumanPoweredFlightPropulsionPowerWatts(double RiderPowerWatts);
 FArriettyFlightStepResult StepHumanPoweredFlight(
     FArriettyFlightState& State,
     double RiderPowerWatts,

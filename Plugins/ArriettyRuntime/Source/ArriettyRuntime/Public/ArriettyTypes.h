@@ -7,7 +7,7 @@
 
 namespace Arrietty
 {
-inline constexpr TCHAR Version[] = TEXT("0.10.0");
+inline constexpr TCHAR Version[] = TEXT("0.11.0");
 inline constexpr TCHAR SteeringControllerSerial[] = TEXT("LHR-9EFF8645");
 inline constexpr TCHAR RideSurfaceTag[] = TEXT("SecretWorldRideSurface");
 inline constexpr double EyeHeightMeters = 1.5;
@@ -34,6 +34,7 @@ inline constexpr double FlightStallSpeedKmh = 18.0;
 inline constexpr double FlightStallRecoverySpeedKmh = 20.5;
 inline constexpr double FlightMaxBankDegrees = 25.0;
 inline constexpr double FlightMaxPitchDegrees = 12.0;
+inline constexpr double FlightControlStepDegrees = 1.0;
 inline constexpr double FlightPitchRateDegreesPerSecond = 28.0;
 inline constexpr double FlightBankRateDegreesPerSecond = 55.0;
 inline constexpr double FlightControlReferenceSpeedKmh = 24.0;
@@ -46,8 +47,8 @@ inline constexpr double FlightMaxRudderTurnRateDegrees = 10.0;
 inline constexpr double FlightControlDeadzone = 0.08;
 inline constexpr double FlightMaxPropellerThrustNewtons = 35.0;
 inline constexpr double FlightGroundRollingResistance = 0.012;
-inline constexpr double FlightPowerBoostMultiplier = 5.0;
 inline constexpr double FlightOverspeedWarningKmh = 60.0;
+inline constexpr int32 VoiceBridgePort = 49000;
 }
 
 enum class EArriettyRideStatus : uint8
@@ -118,8 +119,6 @@ struct FArriettyRideSnapshot
     double CadenceRpm = 0.0;
     int32 PowerWatts = 0;
     double PropulsionPowerWatts = 0.0;
-    double PowerMultiplier = 1.0;
-    bool bPowerBoost5x = false;
     TOptional<uint16> HeartRateBpm;
     FString HeartRateStatus = TEXT("NOT CONNECTED");
     FString ControllerStatus = TEXT("SEARCHING: USB controller");
@@ -127,6 +126,10 @@ struct FArriettyRideSnapshot
     FVector2D ControllerJoystick1 = FVector2D::ZeroVector;
     FVector2D ControllerJoystick2 = FVector2D::ZeroVector;
     uint8 ControllerButtonMask = 0;
+    double CommandedRollRightDegrees = 0.0;
+    double CommandedPitchDegrees = 0.0;
+    bool bPushToTalkHeld = false;
+    FString VoiceStatus = TEXT("PTT READY");
     bool bBrakeButtonHeld = false;
     double AppliedGradePercent = 0.0;
     double DistanceMeters = 0.0;

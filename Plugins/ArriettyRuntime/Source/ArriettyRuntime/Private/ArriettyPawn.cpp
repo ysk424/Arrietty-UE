@@ -10,6 +10,7 @@
 #include "ArriettyRideLog.h"
 #include "ArriettySerialController.h"
 #include "ArriettyTrainerProtocol.h"
+#include "ArriettyVoiceBridgeClient.h"
 #include "Async/Async.h"
 #include "Blueprint/UserWidget.h"
 #include "Camera/CameraComponent.h"
@@ -21,6 +22,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "IHeadMountedDisplay.h"
 #include "StereoRendering.h"
@@ -41,6 +43,7 @@ namespace
 constexpr int32 HmdAlignmentMaxAttempts = 20;
 constexpr float HmdAlignmentRetrySeconds = 0.05f;
 constexpr double HmdAlignmentToleranceDegrees = 1.0;
+constexpr double FlightButtonChordWindowSeconds = 0.08;
 }
 
 AArriettyPawn::AArriettyPawn()
@@ -142,6 +145,7 @@ void AArriettyPawn::BeginPlay()
     SerialController = MakeUnique<FArriettySerialController>();
     SerialController->Start();
     RideLog = MakeUnique<FArriettyRideLog>();
+    VoiceBridge = MakeUnique<FArriettyVoiceBridgeClient>();
     InstrumentWidget = CreateWidget<UArriettyInstrumentWidget>(
         GetWorld(), UArriettyInstrumentWidget::StaticClass(), TEXT("ArriettyInstrumentWidget"));
     AlertWidget = CreateWidget<UArriettyAlertWidget>(
@@ -183,6 +187,7 @@ void AArriettyPawn::BeginPlay()
 void AArriettyPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     GetWorldTimerManager().ClearTimer(HmdAlignmentRetryTimer);
+    CancelPushToTalk();
     StopRide(TEXT("STOP"));
     if (Bluetooth)
     {
@@ -199,6 +204,8 @@ void AArriettyPawn::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     PumpControllerEvents();
+    PumpVoiceBridgeEvents();
+    FlushPendingFlightButton(FPlatformTime::Seconds());
     PumpBluetoothEvents();
     if (Snapshot.HeartRateBpm.IsSet() &&
         FPlatformTime::Seconds() - LastHeartRateSampleSeconds > Arrietty::HeartRateStaleSeconds)
@@ -546,6 +553,11 @@ void AArriettyPawn::QuitApplication()
 
 void AArriettyPawn::StartRide()
 {
+    UE_LOG(LogArriettyRide, Display,
+        TEXT("StartRide requested: ride_active=%d vr_active=%d controller_mask=0x%02X"),
+        IsRideActive() ? 1 : 0,
+        bVrSessionActive ? 1 : 0,
+        static_cast<uint32>(Snapshot.ControllerButtonMask));
     if (IsRideActive())
     {
         RecoverTwoMeters();
@@ -573,7 +585,7 @@ void AArriettyPawn::StartRide()
     Snapshot.FtmsSpeedKmh = 0.0;
     Snapshot.CadenceRpm = 0.0;
     Snapshot.PowerWatts = 0;
-    ResetPowerBoost();
+    ResetDigitalFlightControls();
     Snapshot.HeartRateBpm.Reset();
     Snapshot.HeartRateStatus = TEXT("SEARCHING");
     Snapshot.DistanceMeters = 0.0;
@@ -619,7 +631,7 @@ void AArriettyPawn::StopRide(const TCHAR* LogEvent)
     Snapshot.HeartRateStatus = TEXT("DISCONNECTED");
     LastHeartRateSampleSeconds = 0.0;
     Snapshot.bFlightEnabled = false;
-    ResetPowerBoost();
+    ResetDigitalFlightControls();
     Snapshot.AppliedGradePercent = 0.0;
     Snapshot.AltitudeMeters = 0.0;
     ResetHumanPoweredFlight();
@@ -663,7 +675,7 @@ void AArriettyPawn::ToggleFlight()
         }
         GroundHeightMeters = LandingGroundHeight;
         Snapshot.bFlightEnabled = false;
-        ResetPowerBoost();
+        ResetDigitalFlightControls();
         ResetHumanPoweredFlight();
         Snapshot.Message = TEXT("Ground mode enabled");
         ShowVrAlert(TEXT("GROUND MODE"), 2.5);
@@ -671,44 +683,12 @@ void AArriettyPawn::ToggleFlight()
     else
     {
         Snapshot.bFlightEnabled = true;
+        ResetDigitalFlightControls(Snapshot.ControllerJoystick2);
         ResetHumanPoweredFlight(Snapshot.SpeedKmh);
-        Snapshot.Message = TEXT("Human-powered flight ready; pull Joystick 2 X above 20 km/h to take off");
-        ShowVrAlert(TEXT("HUMAN-POWERED FLIGHT\nJ2 X PITCH  J2 Y BANK\nHANDLE RUDDER"), 3.5);
+        Snapshot.Message = TEXT("Human-powered flight ready; each Joystick 2 gesture changes pitch or roll by one degree");
+        ShowVrAlert(TEXT("DIGITAL FLIGHT CONTROL\n1 GESTURE = 1 DEGREE\nJ2 BUTTON = RESET"), 3.5);
     }
     UpdateWorldTransform(false);
-}
-
-void AArriettyPawn::TogglePowerBoost()
-{
-    if (!IsRideActive() || !Snapshot.bFlightEnabled)
-    {
-        Snapshot.Message = TEXT("Enable human-powered flight before toggling engine power x5");
-        ShowVrAlert(TEXT("POWER x5 REQUIRES\nFLIGHT MODE"), 2.5);
-        return;
-    }
-
-    Snapshot.bPowerBoost5x = !Snapshot.bPowerBoost5x;
-    Snapshot.PowerMultiplier = Snapshot.bPowerBoost5x
-        ? Arrietty::FlightPowerBoostMultiplier
-        : 1.0;
-    Snapshot.PropulsionPowerWatts =
-        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(
-            Snapshot.PowerWatts,
-            Snapshot.bPowerBoost5x);
-    Snapshot.Message = Snapshot.bPowerBoost5x
-        ? TEXT("Engine power boost enabled: rider power x5")
-        : TEXT("Engine power boost disabled: rider power x1");
-    ShowVrAlert(
-        Snapshot.bPowerBoost5x ? TEXT("ENGINE POWER x5") : TEXT("ENGINE POWER x1"),
-        2.0);
-    RecordTelemetry(Snapshot.bPowerBoost5x ? TEXT("POWER_X5_ON") : TEXT("POWER_X5_OFF"));
-}
-
-void AArriettyPawn::ResetPowerBoost()
-{
-    Snapshot.bPowerBoost5x = false;
-    Snapshot.PowerMultiplier = 1.0;
-    Snapshot.PropulsionPowerWatts = 0.0;
 }
 
 void AArriettyPawn::ToggleInstrumentPanel()
@@ -820,12 +800,17 @@ void AArriettyPawn::PumpControllerEvents()
             Snapshot.ControllerStatus = Event.Message;
             Snapshot.bControllerConnected = true;
             bControllerInputInitialized = false;
+            ResetDigitalFlightControls();
+            Snapshot.Message = TEXT("Controller ready; press Button 1 to start");
+            ShowVrAlert(TEXT("CONTROLLER READY\nPRESS BUTTON 1"), 4.0);
+            PlayControllerReadyTone();
             break;
         case EArriettyControllerEventType::Sample:
             Snapshot.bControllerConnected = true;
             HandleControllerSample(Event.Sample);
             break;
         case EArriettyControllerEventType::Disconnected:
+            CancelPushToTalk();
             SetBrakeButtonHeld(false);
             Snapshot.ControllerStatus = Event.Message;
             Snapshot.bControllerConnected = false;
@@ -833,10 +818,76 @@ void AArriettyPawn::PumpControllerEvents()
             Snapshot.ControllerJoystick2 = FVector2D::ZeroVector;
             Snapshot.ControllerButtonMask = 0;
             bControllerInputInitialized = false;
+            ResetDigitalFlightControls();
             break;
         default:
             break;
         }
+    }
+}
+
+void AArriettyPawn::PumpVoiceBridgeEvents()
+{
+    if (!VoiceBridge)
+    {
+        return;
+    }
+
+    FString Status;
+    FString Detail;
+    while (VoiceBridge->PollStatus(Status, Detail))
+    {
+        bVoiceBridgeAckPending = false;
+        UE_LOG(LogArriettyRide, Display,
+            TEXT("Voice bridge status: %s%s%s"),
+            *Status,
+            Detail.IsEmpty() ? TEXT("") : TEXT(" - "),
+            *Detail);
+        if (Status == TEXT("RECORDING"))
+        {
+            Snapshot.VoiceStatus = TEXT("PTT RECORDING");
+            Snapshot.Message = TEXT("Codex PTT is recording");
+            ShowVrAlert(TEXT("PTT LISTENING"), 30.0);
+        }
+        else if (Status == TEXT("TRANSCRIBING"))
+        {
+            Snapshot.VoiceStatus = TEXT("PTT TRANSCRIBING");
+            Snapshot.Message = TEXT("Voice bridge is transcribing");
+            ShowVrAlert(TEXT("PTT TRANSCRIBING"), 8.0);
+        }
+        else if (Status == TEXT("SENT"))
+        {
+            Snapshot.VoiceStatus = TEXT("PTT SENT TO CODEX");
+            Snapshot.Message = TEXT("Voice prompt was sent to Codex");
+            ShowVrAlert(TEXT("PTT SENT TO CODEX"), 2.0);
+        }
+        else if (Status == TEXT("CANCELLED"))
+        {
+            Snapshot.VoiceStatus = TEXT("PTT CANCELLED");
+            Snapshot.Message = TEXT("Voice recording cancelled");
+        }
+        else if (Status == TEXT("ERROR"))
+        {
+            Snapshot.VoiceStatus = TEXT("PTT ERROR");
+            Snapshot.Message = Detail.IsEmpty()
+                ? TEXT("Voice bridge error")
+                : Detail;
+            ShowVrAlert(
+                Detail.IsEmpty()
+                    ? TEXT("PTT ERROR")
+                    : FString::Printf(TEXT("PTT ERROR\n%s"), *Detail.Left(100)),
+                6.0);
+        }
+    }
+
+    if (bVoiceBridgeAckPending &&
+        FPlatformTime::Seconds() >= VoiceBridgeAckDeadlineSeconds)
+    {
+        bVoiceBridgeAckPending = false;
+        Snapshot.VoiceStatus = TEXT("PTT BRIDGE NO RESPONSE");
+        Snapshot.Message = TEXT("Voice bridge did not acknowledge the PTT request");
+        ShowVrAlert(TEXT("PTT BRIDGE\nNO RESPONSE"), 5.0);
+        UE_LOG(LogArriettyRide, Warning, TEXT("Voice bridge did not acknowledge PTT UDP request"));
     }
 }
 
@@ -854,6 +905,11 @@ void AArriettyPawn::HandleControllerSample(const FArriettyControllerSample& Samp
     {
         PreviousControllerButtonMask = Sample.ButtonMask;
         bControllerInputInitialized = true;
+        UE_LOG(LogArriettyRide, Display,
+            TEXT("Controller input initialized with mask 0x%02X"),
+            static_cast<uint32>(Sample.ButtonMask));
+        DigitalFlightControls.Reset(Snapshot.ControllerJoystick2);
+        SetPushToTalkHeld(ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 4));
         SetBrakeButtonHeld(ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 5));
         return;
     }
@@ -862,15 +918,168 @@ void AArriettyPawn::HandleControllerSample(const FArriettyControllerSample& Samp
         Sample.ButtonMask & static_cast<uint8>(~PreviousControllerButtonMask));
     const uint8 ChangedButtons = static_cast<uint8>(
         Sample.ButtonMask ^ PreviousControllerButtonMask);
+    if (ChangedButtons != 0)
+    {
+        UE_LOG(LogArriettyRide, Display,
+            TEXT("Controller button edge: previous=0x%02X current=0x%02X pressed=0x%02X changed=0x%02X"),
+            static_cast<uint32>(PreviousControllerButtonMask),
+            static_cast<uint32>(Sample.ButtonMask),
+            static_cast<uint32>(PressedEdges),
+            static_cast<uint32>(ChangedButtons));
+    }
     PreviousControllerButtonMask = Sample.ButtonMask;
 
     if (ArriettyControllerProtocol::IsPressed(ChangedButtons, 5))
     {
         SetBrakeButtonHeld(ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 5));
     }
-    if (ArriettyControllerProtocol::IsPressed(PressedEdges, 0)) StartRide();
+    if (ArriettyControllerProtocol::IsPressed(PressedEdges, 0))
+    {
+        UE_LOG(LogArriettyRide, Display, TEXT("Button 1 pressed edge received"));
+        StartRide();
+    }
     if (ArriettyControllerProtocol::IsPressed(PressedEdges, 1)) ToggleFlight();
-    if (ArriettyControllerProtocol::IsPressed(PressedEdges, 4)) TogglePowerBoost();
+    if (ArriettyControllerProtocol::IsPressed(ChangedButtons, 4))
+    {
+        SetPushToTalkHeld(ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 4));
+    }
+
+    if (Snapshot.bFlightEnabled)
+    {
+        if (ArriettyControllerProtocol::IsPressed(PressedEdges, 7))
+        {
+            PendingFlightButtonRollStep = 0;
+            ApplyFlightControlChange(
+                DigitalFlightControls.ResetCommands(Snapshot.ControllerJoystick2),
+                TEXT("J2 BUTTON"));
+        }
+        else
+        {
+            ApplyFlightControlChange(
+                DigitalFlightControls.UpdateJoystick(Snapshot.ControllerJoystick2),
+                TEXT("J2"));
+        }
+        HandleFlightButtonEdges(PressedEdges, Sample.ButtonMask, Sample.ReceivedAtSeconds);
+    }
+}
+
+void AArriettyPawn::HandleFlightButtonEdges(
+    uint8 PressedEdges,
+    uint8 CurrentButtons,
+    double NowSeconds)
+{
+    // Serial samples can arrive in a burst. Resolve an expired single-button
+    // press before considering a later edge, rather than overwriting it.
+    FlushPendingFlightButton(NowSeconds);
+
+    const bool bLeftEdge = ArriettyControllerProtocol::IsPressed(PressedEdges, 2);
+    const bool bRightEdge = ArriettyControllerProtocol::IsPressed(PressedEdges, 3);
+    if (!bLeftEdge && !bRightEdge)
+    {
+        return;
+    }
+
+    const bool bBothHeld =
+        ArriettyControllerProtocol::IsPressed(CurrentButtons, 2) &&
+        ArriettyControllerProtocol::IsPressed(CurrentButtons, 3);
+    if ((bLeftEdge && bRightEdge) ||
+        (bBothHeld && PendingFlightButtonRollStep != 0 &&
+         NowSeconds - PendingFlightButtonSinceSeconds <= FlightButtonChordWindowSeconds))
+    {
+        PendingFlightButtonRollStep = 0;
+        ApplyFlightControlChange(DigitalFlightControls.StepPitch(1), TEXT("BUTTON 3+4"));
+        return;
+    }
+
+    PendingFlightButtonRollStep = bLeftEdge ? -1 : 1;
+    PendingFlightButtonSinceSeconds = NowSeconds;
+}
+
+void AArriettyPawn::FlushPendingFlightButton(double NowSeconds)
+{
+    if (PendingFlightButtonRollStep == 0 ||
+        NowSeconds - PendingFlightButtonSinceSeconds < FlightButtonChordWindowSeconds)
+    {
+        return;
+    }
+    const int32 Step = PendingFlightButtonRollStep;
+    PendingFlightButtonRollStep = 0;
+    if (Snapshot.bFlightEnabled)
+    {
+        ApplyFlightControlChange(
+            DigitalFlightControls.StepRollRight(Step),
+            Step < 0 ? TEXT("BUTTON 3") : TEXT("BUTTON 4"));
+    }
+}
+
+void AArriettyPawn::ApplyFlightControlChange(
+    const FArriettyDigitalFlightControlChange& Change,
+    const TCHAR* Source)
+{
+    Snapshot.CommandedPitchDegrees = DigitalFlightControls.GetPitchDegrees();
+    Snapshot.CommandedRollRightDegrees = DigitalFlightControls.GetRollRightDegrees();
+    if (!Change.Any())
+    {
+        return;
+    }
+    Snapshot.Message = FString::Printf(
+        TEXT("%s: roll-right target %+.0f deg, pitch-up target %+.0f deg"),
+        Source,
+        Snapshot.CommandedRollRightDegrees,
+        Snapshot.CommandedPitchDegrees);
+    ShowVrAlert(FString::Printf(
+        TEXT("ROLL R %+.0f DEG\nPITCH UP %+.0f DEG"),
+        Snapshot.CommandedRollRightDegrees,
+        Snapshot.CommandedPitchDegrees), 1.5);
+    RecordTelemetry(Change.bReset ? TEXT("FLIGHT_COMMAND_RESET") : TEXT("FLIGHT_COMMAND_STEP"));
+}
+
+void AArriettyPawn::ResetDigitalFlightControls(const FVector2D& CurrentAxes)
+{
+    PendingFlightButtonRollStep = 0;
+    DigitalFlightControls.Reset(CurrentAxes);
+    Snapshot.CommandedPitchDegrees = 0.0;
+    Snapshot.CommandedRollRightDegrees = 0.0;
+}
+
+void AArriettyPawn::SetPushToTalkHeld(bool bHeld)
+{
+    if (Snapshot.bPushToTalkHeld == bHeld)
+    {
+        return;
+    }
+    Snapshot.bPushToTalkHeld = bHeld;
+    const bool bSent = VoiceBridge &&
+        (bHeld ? VoiceBridge->SendPttDown() : VoiceBridge->SendPttUp());
+    bVoiceBridgeAckPending = bSent;
+    VoiceBridgeAckDeadlineSeconds = FPlatformTime::Seconds() + 1.5;
+    Snapshot.VoiceStatus = bSent
+        ? (bHeld ? TEXT("PTT START REQUESTED") : TEXT("PTT TRANSCRIPTION REQUESTED"))
+        : TEXT("PTT BRIDGE SEND ERROR");
+    Snapshot.Message = bSent
+        ? (bHeld ? TEXT("Requesting voice recording") : TEXT("Requesting voice transcription"))
+        : TEXT("Codex voice bridge is unavailable");
+    ShowVrAlert(
+        bSent
+            ? (bHeld ? TEXT("PTT STARTING") : TEXT("PTT TRANSCRIBING"))
+            : TEXT("PTT BRIDGE ERROR"),
+        bHeld ? 30.0 : 2.0);
+    PlayPttTone(bHeld);
+    RecordTelemetry(bHeld ? TEXT("PTT_DOWN") : TEXT("PTT_UP"));
+}
+
+void AArriettyPawn::CancelPushToTalk()
+{
+    if (!Snapshot.bPushToTalkHeld)
+    {
+        return;
+    }
+    Snapshot.bPushToTalkHeld = false;
+    if (VoiceBridge)
+    {
+        VoiceBridge->SendPttCancel();
+    }
+    Snapshot.VoiceStatus = TEXT("PTT CANCELLED");
 }
 
 void AArriettyPawn::SetBrakeButtonHeld(bool bHeld)
@@ -1039,7 +1248,7 @@ void AArriettyPawn::PumpBluetoothEvents()
             Snapshot.AppliedPreset.Reset();
             Snapshot.AppliedGradePercent = 0.0;
             Snapshot.bFlightEnabled = false;
-            ResetPowerBoost();
+            ResetDigitalFlightControls();
             Snapshot.AltitudeMeters = 0.0;
             ResetHumanPoweredFlight();
             ShowVrAlert(FString::Printf(TEXT("BLUETOOTH ERROR\n%s"), *Event.Message), 5.0);
@@ -1247,7 +1456,6 @@ void AArriettyPawn::AdvanceRide(float DeltaSeconds)
     }
     Snapshot.SpeedKmh = TrainerSpeedKmh;
     Snapshot.PropulsionPowerWatts = 0.0;
-    Snapshot.PowerMultiplier = 1.0;
     if (IsWheelStopped(Now) && FtmsSpeedKmh > 0.0)
     {
         Snapshot.Message = TEXT("Stopped; CSC wheel rotation is stationary");
@@ -1319,19 +1527,14 @@ void AArriettyPawn::AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeco
         ? Snapshot.PowerWatts
         : 0.0;
     const double PropulsionPowerWatts =
-        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(
-            RiderPowerWatts,
-            Snapshot.bPowerBoost5x);
-    Snapshot.PowerMultiplier = Snapshot.bPowerBoost5x
-        ? Arrietty::FlightPowerBoostMultiplier
-        : 1.0;
+        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(RiderPowerWatts);
     Snapshot.PropulsionPowerWatts = PropulsionPowerWatts;
     const FArriettyFlightStepResult FlightResult =
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
             FlightState,
             PropulsionPowerWatts,
-            Snapshot.ControllerJoystick2.X,
-            Snapshot.ControllerJoystick2.Y,
+            DigitalFlightControls.GetElevatorInput(),
+            DigitalFlightControls.GetAileronInput(),
             Snapshot.EffectiveSteeringDegrees,
             DeltaSeconds,
             bCanLand);
@@ -1563,7 +1766,10 @@ void AArriettyPawn::ResetInstrumentAnchor()
         return;
     }
     InstrumentAnchorLocalCentimeters = FVector(105.0, 0.0, 100.0);
-    InstrumentAnchorStatus = TEXT("FIXED VIRTUAL BIKE - Forward 1.05 m, panel center height 1.10 m");
+    InstrumentAnchorStatus = FString::Printf(
+        TEXT("FIXED VIRTUAL BIKE - Forward %.2f m, panel center height %.2f m"),
+        InstrumentAnchorLocalCentimeters.X / 100.0 + PanelForwardOffsetMeters,
+        InstrumentAnchorLocalCentimeters.Z / 100.0 + PanelHeightOffsetMeters);
 }
 
 void AArriettyPawn::UpdateInstrumentAnchor()
@@ -1641,6 +1847,28 @@ void AArriettyPawn::PlayStartSound()
 {
 #if PLATFORM_WINDOWS
     Async(EAsyncExecution::ThreadPool, [] { ::Beep(1200, 700); });
+#endif
+}
+
+void AArriettyPawn::PlayPttTone(bool bPressed)
+{
+#if PLATFORM_WINDOWS
+    Async(EAsyncExecution::ThreadPool, [bPressed]
+    {
+        ::Beep(bPressed ? 880 : 1320, bPressed ? 90 : 120);
+    });
+#endif
+}
+
+void AArriettyPawn::PlayControllerReadyTone()
+{
+#if PLATFORM_WINDOWS
+    Async(EAsyncExecution::ThreadPool, []
+    {
+        ::Beep(880, 110);
+        FPlatformProcess::SleepNoStats(0.06f);
+        ::Beep(1175, 140);
+    });
 #endif
 }
 

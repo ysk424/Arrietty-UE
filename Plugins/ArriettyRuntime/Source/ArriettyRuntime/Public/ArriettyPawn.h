@@ -5,8 +5,10 @@
 
 #include "CoreMinimal.h"
 #include "ArriettyBluetoothManager.h"
+#include "ArriettyDigitalFlightControls.h"
 #include "ArriettySerialController.h"
 #include "ArriettyRideLog.h"
+#include "ArriettyVoiceBridgeClient.h"
 #include "GameFramework/Pawn.h"
 #include "ArriettyTypes.h"
 #include "ArriettyPawn.generated.h"
@@ -37,7 +39,6 @@ public:
     void StartRide();
     void StopRide(const TCHAR* LogEvent = TEXT("STOP"));
     void ToggleFlight();
-    void TogglePowerBoost();
     void ToggleInstrumentPanel();
     void SelectControlPreset(int32 PresetIndex);
     void StepControlPreset(int32 Step);
@@ -81,9 +82,17 @@ private:
     void InitializeVrAtStartup();
     void PumpBluetoothEvents();
     void PumpControllerEvents();
+    void PumpVoiceBridgeEvents();
     void HandleControllerSample(const FArriettyControllerSample& Sample);
+    void HandleFlightButtonEdges(uint8 PressedEdges, uint8 CurrentButtons, double NowSeconds);
+    void FlushPendingFlightButton(double NowSeconds);
+    void ApplyFlightControlChange(
+        const FArriettyDigitalFlightControlChange& Change,
+        const TCHAR* Source);
+    void ResetDigitalFlightControls(const FVector2D& CurrentAxes = FVector2D::ZeroVector);
+    void SetPushToTalkHeld(bool bHeld);
+    void CancelPushToTalk();
     void SetBrakeButtonHeld(bool bHeld);
-    void ResetPowerBoost();
     void RecoverTwoMeters();
     void ResetRecoveryTrail();
     void RecordRecoveryPose(double AdvanceMeters);
@@ -113,6 +122,8 @@ private:
     void ShowVrAlert(const FString& Message, double DurationSeconds = 3.0);
     void UpdateVrAlert();
     void PlayStartSound();
+    void PlayControllerReadyTone();
+    void PlayPttTone(bool bPressed);
     void RecordTelemetry(const TCHAR* Event = TEXT("SAMPLE"));
     bool IsWheelStopped(double NowSeconds) const;
     bool IsLowSpeedCoastStopped() const;
@@ -154,22 +165,28 @@ private:
     TUniquePtr<FArriettyBluetoothManager> Bluetooth;
     TUniquePtr<FArriettySerialController> SerialController;
     TUniquePtr<FArriettyRideLog> RideLog;
+    TUniquePtr<FArriettyVoiceBridgeClient> VoiceBridge;
     FArriettyRideSnapshot Snapshot;
     FArriettyFlightState FlightState;
+    FArriettyDigitalFlightControls DigitalFlightControls;
 
     FVector2D StartPositionMeters = FVector2D::ZeroVector;
     double StartHeadingDegrees = 0.0;
     double MoveStepMeters = Arrietty::DefaultMoveStepMeters;
     double TurnStepDegrees = Arrietty::DefaultTurnStepDegrees;
     double LapLengthMeters = 2605.0;
-    double PanelForwardOffsetMeters = 0.0;
+    double PanelForwardOffsetMeters = 0.20;
     double PanelSideOffsetMeters = 0.0;
-    double PanelHeightOffsetMeters = 0.10;
+    double PanelHeightOffsetMeters = 0.30;
     double PanelScale = 1.0;
 
     bool bVrSessionActive = false;
     bool bControllerInputInitialized = false;
     uint8 PreviousControllerButtonMask = 0;
+    bool bVoiceBridgeAckPending = false;
+    double VoiceBridgeAckDeadlineSeconds = 0.0;
+    int32 PendingFlightButtonRollStep = 0;
+    double PendingFlightButtonSinceSeconds = 0.0;
     struct FRecoveryPose
     {
         FVector2D PositionMeters = FVector2D::ZeroVector;
