@@ -71,7 +71,7 @@ pwsh -File .\Tools\Update-ArriettyWorldProject.ps1 `
 - `Numpad .`: 自転車の走行方向を変えず、現在のHMD仮想視界を走行方向へ再調整
 - `Esc`: ログとT2接続を終了する。VR PreviewではEditorへ戻り、パッケージ版ではArriettyを閉じる
 
-ESP32有線操作盤を接続した場合はCOMポートを自動検出します。Button 1は走行開始／開始後の約2 m安全復帰、Button 2は地上・人力飛行モード、Button 5はCodexとのPTT、Button 6は押下中だけT2へ3%上り勾配を送るブレーキです。飛行中のJoystick 2は、中央から1回倒して戻すたびにピッチまたは右ロール目標を1°ずつ増減し、SWで両方を0°へ戻します。Button 3は左ロール1°、Button 4は右ロール1°、80 ms以内のButton 3+4同時押しは機首上げ1°です。ハンドルは従来どおりラダーです。Joystick 1のX/Y/SWは表示のみです。USB接続直後の約1秒は中央校正のため両スティックへ触れないでください。
+ESP32有線操作盤を接続した場合はCOMポートを自動検出します。Button 1は走行開始／開始後の約2 m安全復帰、Button 2は地上・人力飛行モード、Button 5はCodexとのPTT、Button 6は押下中だけT2へ3%上り勾配を送るブレーキです。飛行中のJoystick 2は、中央から1回倒して戻すたびにピッチまたは右ロール目標を1°ずつ増減し、SWで両方を0°へ戻します。Button 3は左ロール1°、Button 4は右ロール1°、80 ms以内のButton 3+4同時押しは機首上げ1°です。ハンドルは従来どおりラダーです。Joystick 1 SWは飛行調整を開始／確定し、Xを左右へ1回倒して戻すたびに選択中の値を1段階だけ減少／増加します。USB接続直後の約1秒は中央校正のため両スティックへ触れないでください。
 
 PTTを使う日は、Codexが動作しているWSL/tmuxペインから最初に`./Tools/start-arrietty-voice-bridge.sh`を1回実行します。Button 5を押している間だけ自転車側のVIVEマイクを録音し、離すと日本語へ文字起こしして同じCodexセッションへEnter付きで送ります。次の最終回答だけをAI音声でPCスピーカーから読み上げます。Windowsユーザー環境変数`OPENAI_API_KEY`とFFmpegが必要です。詳細は[`Tools/ArriettyVoiceBridge/README.md`](Tools/ArriettyVoiceBridge/README.md)を参照してください。
 
@@ -88,15 +88,16 @@ PTTを使う日は、Codexが動作しているWSL/tmuxペインから最初に`
 - 最良滑空速度24 km/h、離陸20 km/h、失速18 km/h、回復20.5 km/h。失速時は機首が下がり、降下して速度を回復する
 - Joystick 2は倒し量に依存せず、中央から倒して戻す1ジェスチャーを1°のピッチ／右ロール目標変更に変換する。SWで両目標を0°へ戻し、ハンドルはラダーに使う
 - Button 3は左ロール1°、Button 4は右ロール1°、Button 3+4同時押しは機首上げ1°としてJoystick 2を補助する
+- Joystick 1で固定推進力、飛行速度倍率、正の余剰出力に対する上昇倍率、ピッチ応答、最大上下動、ロール応答を一項目ずつ調整する飛行チューニング。調整中は既定95 Wの固定推進力を使い、エネルギー計算上の24 km/h水平飛行点を再現する
 - 24 km/hを操舵基準速度とし、対気速度の二乗に応じてピッチ／バンクの到達速度を変える。最大角±12°／±25°は維持し、低速で鈍く、高速で速くなる
 - Button 5 PTTから`gpt-4o-mini-transcribe`、WSL/tmux Codex、`gpt-4o-mini-tts`をつなぐ走行中の短文音声対話
 - `SecretWorldRideSurface`タグを持つActorまたはComponentだけを走行面として使う下向きレイキャスト
 - 仮想自転車の正面1.25m（従来より20cm前）、中心高1.30m（従来より20cm上）に固定する54×30cmの不透明World Space VR計器。自動車のダッシュボードと同様に進行方向と一緒に動き、頭の向きには追従しない
-- 対気速度を主表示する人工水平儀、心拍、時刻、ケイデンス、実測／推進パワー、距離、高度、昇降率、Heading、Pitch、Bank、FPA、AoA、操舵効率、失速／過速度、地理座標の表示
+- 対気速度を主表示する人工水平儀、心拍、時刻、ケイデンス、実測／推進パワー、距離、対地高度`ALT AGL`、昇降率、Heading、Pitch、Bank、FPA、AoA、操舵効率、失速／過速度、楕円体高を含む地理座標の表示
 - BLEエラー、操舵追跡喪失、コース端、飛行切替を短時間だけHMD前方へ表示
 - 固定名`Saved/arrietty_ride.csv`への上書きログ
 
-飛行モードは`Numpad 7`またはButton 2で有効にします。20 km/h以上でJoystick 2を手前へ1回以上動かして機首上げ目標を作ると離陸します。約95 Wで24 km/hの水平飛行となり、それ以上のパワーは上昇へ、少ないパワーは降下へ使われます。機首上げ目標を増やすと対気速度を失い、18 km/h未満で失速します。回復は前へ倒して機首下げ目標にし、20.5 km/h以上へ戻します。着陸後まで飛行モードは継続し、空中で地上モードへ切り替えることはできません。コース外へ飛べますが、着陸と地上モードへの復帰には`SecretWorldRideSurface`上空へ戻る必要があります。
+飛行モードは`Numpad 7`またはButton 2で有効にします。エネルギー計算上の20 km/h以上でJoystick 2を手前へ1回以上動かして機首上げ目標を作ると離陸します。既定の飛行速度倍率は3.0で、計器表示と世界移動は24 km/hを72 km/hとして扱います。約95 Wが水平飛行点です。140 Wでは正の余剰出力だけを既定10倍で上昇へ変換し、中立姿勢の目安は約1.04 m/s、300 mまで約5分です。出力不足や0 W時の沈下は上昇倍率で増幅しないため、獲得高度から長く滑空できます。機首上げ目標を増やすとエネルギー速度を失い、同速度18 km/h未満で失速します。回復は前へ倒して機首下げ目標にし、20.5 km/h以上へ戻します。着陸後まで飛行モードは継続し、空中で地上モードへ切り替えることはできません。コース外へ飛べますが、着陸と地上モードへの復帰には`SecretWorldRideSurface`上空へ戻る必要があります。
 
 ## Google Earth / Cesium
 
@@ -115,7 +116,7 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 - v0.11.0 UE 5.8.2 Editor: デジタル操舵、PTT UDPクライアントを含めビルド成功
 - v0.10.0 Win64 Development Game / Shipping: ビルド成功（v0.11.0は未実施）
 - Visual Studio 2026ソリューション: 生成成功（ToolsVersion 18.0）
-- UE Automation: 9テスト成功（デジタル操舵、人力飛行、ESP32シリアルプロトコル、心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
+- UE Automation: 10テスト成功（飛行チューニング、デジタル操舵、人力飛行、ESP32シリアルプロトコル、心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
 - NullRHIゲーム起動: `ArriettyRuntime`、`ArriettyGameMode`、`ArriettyDemo` Levelのロード成功
 - 別名の世界プロジェクト生成、Runtime更新、VS2026 Editorビルド: 成功
 - v0.9.0 Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み。v0.10.0 Earth Levelは作成・保存済みで、Earthを含むcook/packageは未実施

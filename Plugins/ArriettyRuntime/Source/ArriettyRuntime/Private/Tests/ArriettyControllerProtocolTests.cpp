@@ -3,6 +3,7 @@
 
 #include "ArriettyControllerProtocol.h"
 #include "ArriettyDigitalFlightControls.h"
+#include "ArriettyFlightTuningControls.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -88,6 +89,85 @@ bool FArriettyDigitalFlightControlsTest::RunTest(const FString& Parameters)
         Controls.GetPitchDegrees(), Arrietty::FlightMaxPitchDegrees);
     TestEqual(TEXT("Roll command clamps at the aircraft limit"),
         Controls.GetRollRightDegrees(), Arrietty::FlightMaxBankDegrees);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FArriettyFlightTuningControlsTest,
+    "Arrietty.Controller.Flight Tuning Controls",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FArriettyFlightTuningControlsTest::RunTest(const FString& Parameters)
+{
+    FArriettyFlightTuningControls Controls;
+    Controls.Reset();
+    Controls.UpdateJoystick(FVector2D(0.8, 0.0));
+    TestFalse(TEXT("J1 X does nothing before tuning starts"), Controls.IsActive());
+    TestEqual(TEXT("Default test propulsion is 95 W"),
+        Controls.GetValues().TestPropulsionPowerWatts, 95.0);
+    TestEqual(TEXT("Default flight speed multiplier is three"),
+        Controls.GetValues().AirspeedMultiplier, 3.0);
+    TestEqual(TEXT("Default positive climb multiplier is ten"),
+        Controls.GetValues().PositiveClimbMultiplier, 10.0);
+    TestEqual(TEXT("Flight tuning exposes six items"), Controls.GetParameterCount(), 6);
+
+    const FArriettyFlightTuningChange Entered = Controls.PressSwitch();
+    TestTrue(TEXT("J1 SW starts tuning"), Entered.bEntered && Controls.IsActive());
+    TestEqual(TEXT("First item is test propulsion"),
+        Controls.GetParameter(), EArriettyFlightTuningParameter::TestPropulsionPower);
+    Controls.UpdateJoystick(FVector2D(0.8, 0.0));
+    TestEqual(TEXT("J1 right adds 5 W"),
+        Controls.GetValues().TestPropulsionPowerWatts, 100.0);
+    Controls.UpdateJoystick(FVector2D(1.0, 0.0));
+    TestEqual(TEXT("Holding J1 right does not repeat"),
+        Controls.GetValues().TestPropulsionPowerWatts, 100.0);
+    Controls.UpdateJoystick(FVector2D::ZeroVector);
+    Controls.UpdateJoystick(FVector2D(-0.8, 0.0));
+    TestEqual(TEXT("J1 left subtracts 5 W after returning to center"),
+        Controls.GetValues().TestPropulsionPowerWatts, 95.0);
+
+    Controls.PressSwitch();
+    TestEqual(TEXT("Second item is flight speed multiplier"),
+        Controls.GetParameter(), EArriettyFlightTuningParameter::AirspeedMultiplier);
+    Controls.UpdateJoystick(FVector2D::ZeroVector);
+    Controls.UpdateJoystick(FVector2D(0.8, 0.0));
+    TestEqual(TEXT("Flight speed multiplier changes by 0.5"),
+        Controls.GetValues().AirspeedMultiplier, 3.5);
+
+    Controls.PressSwitch();
+    TestEqual(TEXT("Third item is positive climb multiplier"),
+        Controls.GetParameter(), EArriettyFlightTuningParameter::PositiveClimbMultiplier);
+    Controls.UpdateJoystick(FVector2D::ZeroVector);
+    Controls.UpdateJoystick(FVector2D(0.8, 0.0));
+    TestEqual(TEXT("Positive climb multiplier changes by one"),
+        Controls.GetValues().PositiveClimbMultiplier, 11.0);
+
+    Controls.PressSwitch();
+    TestEqual(TEXT("Fourth item is pitch response"),
+        Controls.GetParameter(), EArriettyFlightTuningParameter::PitchResponseRate);
+    Controls.UpdateJoystick(FVector2D::ZeroVector);
+    Controls.UpdateJoystick(FVector2D(0.8, 0.0));
+    TestEqual(TEXT("Pitch response changes by 2 degrees per second"),
+        Controls.GetValues().PitchRateDegreesPerSecond, 30.0);
+
+    Controls.PressSwitch();
+    TestEqual(TEXT("Fifth item is elevator vertical speed"),
+        Controls.GetParameter(), EArriettyFlightTuningParameter::ElevatorVerticalSpeed);
+    Controls.UpdateJoystick(FVector2D::ZeroVector);
+    Controls.UpdateJoystick(FVector2D(0.8, 0.0));
+    TestTrue(TEXT("Vertical speed changes by 0.1 m/s"), FMath::IsNearlyEqual(
+        Controls.GetValues().MaxElevatorVerticalSpeedMps, 1.6));
+
+    Controls.PressSwitch();
+    TestEqual(TEXT("Sixth item is roll response"),
+        Controls.GetParameter(), EArriettyFlightTuningParameter::BankResponseRate);
+    Controls.UpdateJoystick(FVector2D::ZeroVector);
+    Controls.UpdateJoystick(FVector2D(-0.8, 0.0));
+    TestEqual(TEXT("Roll response changes by 5 degrees per second"),
+        Controls.GetValues().BankRateDegreesPerSecond, 50.0);
+    const FArriettyFlightTuningChange Completed = Controls.PressSwitch();
+    TestTrue(TEXT("Confirming the sixth item completes tuning"),
+        Completed.bCompleted && !Controls.IsActive());
     return true;
 }
 

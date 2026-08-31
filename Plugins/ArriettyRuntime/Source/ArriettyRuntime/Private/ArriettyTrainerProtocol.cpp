@@ -22,7 +22,9 @@ double NormalizedFlightControl(double Input)
         (1.0 - Arrietty::FlightControlDeadzone);
 }
 
-void UpdateFlightAttitudeMetrics(FArriettyFlightState& State)
+void UpdateFlightAttitudeMetrics(
+    FArriettyFlightState& State,
+    double AirspeedMultiplier)
 {
     if (!State.bAirborne)
     {
@@ -34,7 +36,8 @@ void UpdateFlightAttitudeMetrics(FArriettyFlightState& State)
     const double HorizontalSpeed = FMath::Sqrt(FMath::Max(
         0.0,
         FMath::Square(State.AirspeedMetersPerSecond) -
-            FMath::Square(State.VerticalSpeedMetersPerSecond)));
+            FMath::Square(State.VerticalSpeedMetersPerSecond))) *
+        FMath::Max(0.1, AirspeedMultiplier);
     State.FlightPathAngleDegrees = FMath::RadiansToDegrees(FMath::Atan2(
         State.VerticalSpeedMetersPerSecond,
         FMath::Max(0.01, HorizontalSpeed)));
@@ -288,6 +291,23 @@ double ArriettyTrainerProtocol::HumanPoweredLevelFlightPowerWatts(double Airspee
         Arrietty::FlightPropellerEfficiency;
 }
 
+double ArriettyTrainerProtocol::HumanPoweredFlightPowerClimbRateMetersPerSecond(
+    double PropulsionPowerWatts,
+    double EnergyAirspeedKmh,
+    double PositiveClimbMultiplier)
+{
+    const double Airspeed = FMath::Max(0.0, EnergyAirspeedKmh / 3.6);
+    const double EffectivePower =
+        FMath::Max(0.0, PropulsionPowerWatts) * Arrietty::FlightPropellerEfficiency;
+    const double PowerBalanceWatts =
+        EffectivePower - HumanPoweredFlightDragNewtons(Airspeed) * Airspeed;
+    const double VirtualPowerBalanceWatts = PowerBalanceWatts > 0.0
+        ? PowerBalanceWatts * FMath::Max(1.0, PositiveClimbMultiplier)
+        : PowerBalanceWatts;
+    return VirtualPowerBalanceWatts /
+        (Arrietty::FlightEffectiveMassKg * StandardGravityMetersPerSecondSquared);
+}
+
 double ArriettyTrainerProtocol::HumanPoweredFlightControlAuthority(
     double AirspeedMetersPerSecond,
     bool bStalled)
@@ -314,7 +334,8 @@ FArriettyFlightStepResult ArriettyTrainerProtocol::StepHumanPoweredFlight(
     double AileronInput,
     double RudderDegrees,
     double DeltaSeconds,
-    bool bCanLand)
+    bool bCanLand,
+    const FArriettyFlightTuningValues& Tuning)
 {
     FArriettyFlightStepResult Result;
     const double Delta = FMath::Clamp(DeltaSeconds, 0.0, 0.25);
@@ -342,12 +363,12 @@ FArriettyFlightStepResult ArriettyTrainerProtocol::StepHumanPoweredFlight(
         State.PitchDegrees,
         TargetPitch,
         Delta,
-        Arrietty::FlightPitchRateDegreesPerSecond * PitchAuthority);
+        FMath::Max(0.1, Tuning.PitchRateDegreesPerSecond) * PitchAuthority);
     State.BankDegrees = FMath::FInterpConstantTo(
         State.BankDegrees,
         TargetBank,
         Delta,
-        Arrietty::FlightBankRateDegreesPerSecond * State.ControlAuthority);
+        FMath::Max(0.1, Tuning.BankRateDegreesPerSecond) * State.ControlAuthority);
 
     const double RudderInput = FMath::Clamp(
         RudderDegrees / Arrietty::MaxEffectiveSteeringDegrees,
@@ -382,17 +403,17 @@ FArriettyFlightStepResult ArriettyTrainerProtocol::StepHumanPoweredFlight(
             Airspeed / (Arrietty::TakeoffSpeedKmh / 3.6), 0.0, 1.0);
         State.HeadingRateDegreesPerSecond =
             RudderInput * Arrietty::FlightMaxRudderTurnRateDegrees * TakeoffFraction;
-        if (Airspeed * 3.6 >= Arrietty::TakeoffSpeedKmh && Elevator > 0.10)
+        if (Airspeed * 3.6 >= Arrietty::TakeoffSpeedKmh && Elevator > 0.0)
         {
             State.bAirborne = true;
             State.VerticalSpeedMetersPerSecond = FMath::Max(
                 0.25,
-                Elevator * Arrietty::FlightMaxElevatorVerticalSpeedMps);
+                Elevator * FMath::Max(0.1, Tuning.MaxElevatorVerticalSpeedMps));
             Result.bTookOff = true;
         }
         State.AirspeedMetersPerSecond = Airspeed;
         State.ControlAuthority = HumanPoweredFlightControlAuthority(Airspeed, State.bStalled);
-        UpdateFlightAttitudeMetrics(State);
+        UpdateFlightAttitudeMetrics(State, Tuning.AirspeedMultiplier);
         return Result;
     }
 
@@ -410,12 +431,14 @@ FArriettyFlightStepResult ArriettyTrainerProtocol::StepHumanPoweredFlight(
     Result.bStallStarted = !bWasStalled && State.bStalled;
     Result.bStallRecovered = bWasStalled && !State.bStalled;
 
-    const double Drag = HumanPoweredFlightDragNewtons(Airspeed);
-    const double BaseVerticalSpeed =
-        (EffectivePower - Drag * Airspeed) /
-        (Arrietty::FlightEffectiveMassKg * StandardGravityMetersPerSecondSquared);
+    const double BaseVerticalSpeed = HumanPoweredFlightPowerClimbRateMetersPerSecond(
+        Power,
+        Airspeed * 3.6,
+        Tuning.PositiveClimbMultiplier);
+    const double VirtualPowerBalanceWatts = BaseVerticalSpeed *
+        Arrietty::FlightEffectiveMassKg * StandardGravityMetersPerSecondSquared;
     double DesiredVerticalSpeed = BaseVerticalSpeed +
-        Elevator * Arrietty::FlightMaxElevatorVerticalSpeedMps;
+        Elevator * FMath::Max(0.1, Tuning.MaxElevatorVerticalSpeedMps);
     const double NormalVerticalLimit = FMath::Max(
         0.25,
         Airspeed * FMath::Sin(FMath::DegreesToRadians(Arrietty::FlightMaxPitchDegrees)));
@@ -438,10 +461,9 @@ FArriettyFlightStepResult ArriettyTrainerProtocol::StepHumanPoweredFlight(
         Delta,
         State.bStalled ? 5.0 : 2.5);
 
-    const double ForceBalance =
-        EffectivePower - Drag * Airspeed -
+    const double ForceBalance = VirtualPowerBalanceWatts -
         Arrietty::FlightEffectiveMassKg * StandardGravityMetersPerSecondSquared *
-            State.VerticalSpeedMetersPerSecond;
+            DesiredVerticalSpeed;
     const double Acceleration = FMath::Clamp(
         ForceBalance /
             (Arrietty::FlightEffectiveMassKg * FMath::Max(3.0, Airspeed)),
@@ -486,7 +508,7 @@ FArriettyFlightStepResult ArriettyTrainerProtocol::StepHumanPoweredFlight(
             Result.bLandingBlocked = true;
         }
     }
-    UpdateFlightAttitudeMetrics(State);
+    UpdateFlightAttitudeMetrics(State, Tuning.AirspeedMultiplier);
     return Result;
 }
 

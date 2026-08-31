@@ -254,7 +254,11 @@ TSharedRef<SWidget> UArriettyInstrumentWidget::RebuildWidget()
     SpeedCueText = MakeInstrumentText(
         WidgetTree, SpeedColumn, TEXT("GROUND ROLL"), 19, InstrumentOrange, ETextJustify::Center);
     PowerText = MakeInstrumentText(
-        WidgetTree, SpeedColumn, TEXT("RIDER    0 W\nPROP     0 W\nPTT READY"), 20, InstrumentGreen);
+        WidgetTree,
+        SpeedColumn,
+        TEXT("RIDER    0 W\nPROP     0 W\nTUNE OFF - PRESS J1 SW\nPTT READY"),
+        18,
+        InstrumentGreen);
 
     USizeBox* AttitudeSize = WidgetTree->ConstructWidget<USizeBox>();
     AttitudeSize->SetWidthOverride(310.0f);
@@ -276,8 +280,8 @@ TSharedRef<SWidget> UArriettyInstrumentWidget::RebuildWidget()
     FlightDataText = MakeInstrumentText(
         WidgetTree,
         DataPanel,
-        TEXT("ALT     0.0 m\nV/S    +0.0 m/s\nHDG      000\nPITCH  +0.0\nBANK   +0.0\nCMD R  +0\nCMD P  +0\nFPA    +0.0\nAOA    +0.0"),
-        21,
+        TEXT("STATE  ON GROUND\nALT AGL   0.0 m\nV/S      +0.0 m/s\nHDG        000\nPITCH    +0.0\nBANK     +0.0\nCMD R    +0\nCMD P    +0\nFPA      +0.0\nAOA      +0.0"),
+        20,
         InstrumentGreen);
 
     UHorizontalBox* Footer = WidgetTree->ConstructWidget<UHorizontalBox>();
@@ -329,11 +333,16 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     FLinearColor SpeedCueColor = InstrumentOrange;
     if (Snapshot.bFlightEnabled)
     {
+        const double AirspeedMultiplier = FMath::Max(1.0, Snapshot.FlightAirspeedMultiplier);
+        const double DisplayTakeoffSpeed = Arrietty::TakeoffSpeedKmh * AirspeedMultiplier;
+        const double DisplayStallSpeed = Arrietty::FlightStallSpeedKmh * AirspeedMultiplier;
+        const double DisplayRecoverySpeed =
+            Arrietty::FlightStallRecoverySpeedKmh * AirspeedMultiplier;
         if (!Snapshot.bAircraftAirborne)
         {
-            SpeedCue = Snapshot.SpeedKmh >= Arrietty::TakeoffSpeedKmh
+            SpeedCue = Snapshot.SpeedKmh >= DisplayTakeoffSpeed
                 ? TEXT("ROTATE")
-                : TEXT("TAKEOFF 20");
+                : FString::Printf(TEXT("TAKEOFF %.0f"), DisplayTakeoffSpeed);
         }
         else if (Snapshot.bAircraftOverspeed)
         {
@@ -341,12 +350,12 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
             SpeedCueColor = InstrumentRed;
         }
         else if (Snapshot.bAircraftStalled ||
-            Snapshot.SpeedKmh < Arrietty::FlightStallSpeedKmh)
+            Snapshot.SpeedKmh < DisplayStallSpeed)
         {
             SpeedCue = TEXT("STALL");
             SpeedCueColor = InstrumentRed;
         }
-        else if (Snapshot.SpeedKmh < Arrietty::FlightStallRecoverySpeedKmh)
+        else if (Snapshot.SpeedKmh < DisplayRecoverySpeed)
         {
             SpeedCue = TEXT("RECOVERY BAND");
         }
@@ -361,9 +370,10 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     SpeedCueText->SetColorAndOpacity(FSlateColor(SpeedCueColor));
 
     PowerText->SetText(FText::FromString(FString::Printf(
-        TEXT("RIDER %4d W\nPROP  %4.0f W\n%s"),
+        TEXT("RIDER %4d W\nPROP  %4.0f W\n%s\n%s"),
         Snapshot.PowerWatts,
         Snapshot.PropulsionPowerWatts,
+        *Snapshot.FlightTuningStatus,
         *Snapshot.VoiceStatus)));
     PowerText->SetColorAndOpacity(FSlateColor(
         Snapshot.bPushToTalkHeld ? InstrumentOrange : InstrumentGreen));
@@ -379,7 +389,8 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     const int32 HeadingDegrees = FMath::RoundToInt(
         FMath::Fmod(Snapshot.HeadingDegrees + 360.0, 360.0)) % 360;
     FlightDataText->SetText(FText::FromString(FString::Printf(
-        TEXT("ALT   %6.1f m\nV/S   %+6.1f m/s\nHDG      %03d\nPITCH %+6.1f\nBANK  %+6.1f\nCMD R %+6.0f\nCMD P %+6.0f\nFPA   %+6.1f\nAOA   %+6.1f"),
+        TEXT("STATE  %s\nALT AGL %6.1f m\nV/S     %+6.1f m/s\nHDG        %03d\nPITCH   %+6.1f\nBANK    %+6.1f\nCMD R   %+6.0f\nCMD P   %+6.0f\nFPA     %+6.1f\nAOA     %+6.1f"),
+        Snapshot.bAircraftAirborne ? TEXT("AIRBORNE") : TEXT("ON GROUND"),
         Snapshot.AltitudeMeters,
         Snapshot.VerticalSpeedMetersPerSecond,
         HeadingDegrees,
@@ -419,7 +430,7 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     ClockText->SetText(FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S"))));
     const FString Position = Snapshot.bGeospatialNavigation
         ? FString::Printf(
-            TEXT("LON %.6f  LAT %.6f  H %.1f m"),
+            TEXT("LON %.6f  LAT %.6f  ELLIP H %.1f m"),
             Snapshot.LongitudeDegrees,
             Snapshot.LatitudeDegrees,
             Snapshot.EllipsoidHeightMeters)

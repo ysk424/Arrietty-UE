@@ -29,6 +29,10 @@ double EffectiveSpeedKmh(
 void InitializeHumanPoweredFlight(FArriettyFlightState& State, double InitialAirspeedKmh = 0.0);
 double HumanPoweredFlightDragNewtons(double AirspeedMetersPerSecond);
 double HumanPoweredLevelFlightPowerWatts(double AirspeedKmh);
+double HumanPoweredFlightPowerClimbRateMetersPerSecond(
+    double PropulsionPowerWatts,
+    double EnergyAirspeedKmh,
+    double PositiveClimbMultiplier);
 double HumanPoweredFlightControlAuthority(double AirspeedMetersPerSecond, bool bStalled);
 double HumanPoweredFlightPropulsionPowerWatts(double RiderPowerWatts);
 FArriettyFlightStepResult StepHumanPoweredFlight(
@@ -38,7 +42,8 @@ FArriettyFlightStepResult StepHumanPoweredFlight(
     double AileronInput,
     double RudderDegrees,
     double DeltaSeconds,
-    bool bCanLand);
+    bool bCanLand,
+    const FArriettyFlightTuningValues& Tuning = FArriettyFlightTuningValues());
 bool RequiresRideSurface(bool bFlightEnabled);
 int32 CompletedLaps(double DistanceMeters, double LapLengthMeters);
 double EffectiveSteeringDegrees(double FilteredRawDegrees);

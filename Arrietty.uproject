@@ -42,6 +42,13 @@
         "Android",
         "IOS"
       ]
+    },
+    {
+      "Name": "CinderLink",
+      "Enabled": true,
+      "SupportedTargetPlatforms": [
+        "Win64"
+      ]
     }
   ]
 }

@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "ArriettyBluetoothManager.h"
 #include "ArriettyDigitalFlightControls.h"
+#include "ArriettyFlightTuningControls.h"
 #include "ArriettySerialController.h"
 #include "ArriettyRideLog.h"
 #include "ArriettyVoiceBridgeClient.h"
@@ -90,6 +91,10 @@ private:
         const FArriettyDigitalFlightControlChange& Change,
         const TCHAR* Source);
     void ResetDigitalFlightControls(const FVector2D& CurrentAxes = FVector2D::ZeroVector);
+    void ApplyFlightTuningChange(
+        const FArriettyFlightTuningChange& Change,
+        const TCHAR* Source);
+    void SyncFlightTuningSnapshot();
     void SetPushToTalkHeld(bool bHeld);
     void CancelPushToTalk();
     void SetBrakeButtonHeld(bool bHeld);
@@ -169,6 +174,7 @@ private:
     FArriettyRideSnapshot Snapshot;
     FArriettyFlightState FlightState;
     FArriettyDigitalFlightControls DigitalFlightControls;
+    FArriettyFlightTuningControls FlightTuningControls;
 
     FVector2D StartPositionMeters = FVector2D::ZeroVector;
     double StartHeadingDegrees = 0.0;

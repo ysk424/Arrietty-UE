@@ -193,6 +193,22 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Negative propulsion power is rejected"),
         ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(-10.0),
         0.0);
+    TestTrue(TEXT("140 W and positive climb x10 yields about 1.04 m/s at 24 km/h"),
+        FMath::IsNearlyEqual(
+            ArriettyTrainerProtocol::HumanPoweredFlightPowerClimbRateMetersPerSecond(
+                140.0,
+                24.0,
+                10.0),
+            1.04,
+            0.02));
+    TestTrue(TEXT("Positive climb multiplier leaves unpowered sink near 0.22 m/s"),
+        FMath::IsNearlyEqual(
+            ArriettyTrainerProtocol::HumanPoweredFlightPowerClimbRateMetersPerSecond(
+                0.0,
+                24.0,
+                10.0),
+            -24.0 / 3.6 / Arrietty::FlightGlideRatio,
+            0.001));
 
     const double LowSpeedAuthority =
         ArriettyTrainerProtocol::HumanPoweredFlightControlAuthority(18.5 / 3.6, false);
@@ -218,6 +234,20 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
             Takeoff, 180.0, 1.0, 0.0, 0.0, 0.1, true);
     TestTrue(TEXT("Positive J2 X takes off above 20 km/h"), TakeoffResult.bTookOff);
     TestTrue(TEXT("Aircraft is airborne"), Takeoff.bAirborne);
+
+    FArriettyFlightState OneDegreeTakeoff;
+    ArriettyTrainerProtocol::InitializeHumanPoweredFlight(OneDegreeTakeoff, 21.0);
+    const FArriettyFlightStepResult OneDegreeTakeoffResult =
+        ArriettyTrainerProtocol::StepHumanPoweredFlight(
+            OneDegreeTakeoff,
+            Arrietty::FlightTestPropulsionPowerWatts,
+            Arrietty::FlightControlStepDegrees / Arrietty::FlightMaxPitchDegrees,
+            0.0,
+            0.0,
+            0.1,
+            true);
+    TestTrue(TEXT("One positive digital pitch step can rotate above 20 km/h"),
+        OneDegreeTakeoffResult.bTookOff);
 
     FArriettyFlightState Controls;
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(Controls, 24.0);
@@ -264,6 +294,46 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
         LowSpeedControls.BankDegrees < ReferenceSpeedControls.BankDegrees);
     TestTrue(TEXT("Bank response is faster at high airspeed"),
         ReferenceSpeedControls.BankDegrees < HighSpeedControls.BankDegrees);
+
+    FArriettyFlightState TunedSlowControls = MakeAirborneState(24.0);
+    FArriettyFlightTuningValues SlowTuning;
+    SlowTuning.PitchRateDegreesPerSecond = 4.0;
+    SlowTuning.BankRateDegreesPerSecond = 5.0;
+    ArriettyTrainerProtocol::StepHumanPoweredFlight(
+        TunedSlowControls, 150.0, 1.0, 1.0, 0.0, 0.1, true, SlowTuning);
+    TestTrue(TEXT("Runtime tuning can slow pitch response"),
+        TunedSlowControls.PitchDegrees < ReferenceSpeedControls.PitchDegrees);
+    TestTrue(TEXT("Runtime tuning can slow roll response"),
+        TunedSlowControls.BankDegrees < ReferenceSpeedControls.BankDegrees);
+
+    FArriettyFlightState BoostedClimb = MakeAirborneState(24.0);
+    FArriettyFlightState UnboostedClimb = MakeAirborneState(24.0);
+    FArriettyFlightTuningValues UnboostedTuning;
+    UnboostedTuning.PositiveClimbMultiplier = 1.0;
+    ArriettyTrainerProtocol::StepHumanPoweredFlight(
+        BoostedClimb, 140.0, 0.0, 0.0, 0.0, 0.1, true);
+    ArriettyTrainerProtocol::StepHumanPoweredFlight(
+        UnboostedClimb, 140.0, 0.0, 0.0, 0.0, 0.1, true, UnboostedTuning);
+    TestTrue(TEXT("Default tuning strongly amplifies positive surplus-power climb"),
+        BoostedClimb.VerticalSpeedMetersPerSecond >
+            UnboostedClimb.VerticalSpeedMetersPerSecond * 5.0);
+    TestTrue(TEXT("Neutral boosted climb does not consume energy-equivalent airspeed"),
+        FMath::IsNearlyEqual(
+            BoostedClimb.AirspeedMetersPerSecond,
+            UnboostedClimb.AirspeedMetersPerSecond,
+            0.001));
+
+    FArriettyFlightState BoostedGlide = MakeAirborneState(24.0);
+    FArriettyFlightState UnboostedGlide = MakeAirborneState(24.0);
+    ArriettyTrainerProtocol::StepHumanPoweredFlight(
+        BoostedGlide, 0.0, 0.0, 0.0, 0.0, 0.1, true);
+    ArriettyTrainerProtocol::StepHumanPoweredFlight(
+        UnboostedGlide, 0.0, 0.0, 0.0, 0.0, 0.1, true, UnboostedTuning);
+    TestTrue(TEXT("Positive climb multiplier does not amplify unpowered sink"),
+        FMath::IsNearlyEqual(
+            BoostedGlide.VerticalSpeedMetersPerSecond,
+            UnboostedGlide.VerticalSpeedMetersPerSecond,
+            0.001));
 
     FArriettyFlightState OppositeControls;
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(OppositeControls, 24.0);

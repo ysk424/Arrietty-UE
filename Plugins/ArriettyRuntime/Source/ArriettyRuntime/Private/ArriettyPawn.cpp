@@ -134,6 +134,7 @@ void AArriettyPawn::BeginPlay()
             FVector2D(InitialWorldForward.X, InitialWorldForward.Y));
     Snapshot.PositionMeters = StartPositionMeters;
     Snapshot.HeadingDegrees = StartHeadingDegrees;
+    SyncFlightTuningSnapshot();
     GroundHeightMeters = NavigationComponent ? 0.0 : InitialWorldLocation.Z / 100.0;
     if (NavigationComponent)
     {
@@ -586,6 +587,8 @@ void AArriettyPawn::StartRide()
     Snapshot.CadenceRpm = 0.0;
     Snapshot.PowerWatts = 0;
     ResetDigitalFlightControls();
+    FlightTuningControls.Reset(Snapshot.ControllerJoystick1);
+    SyncFlightTuningSnapshot();
     Snapshot.HeartRateBpm.Reset();
     Snapshot.HeartRateStatus = TEXT("SEARCHING");
     Snapshot.DistanceMeters = 0.0;
@@ -632,6 +635,8 @@ void AArriettyPawn::StopRide(const TCHAR* LogEvent)
     LastHeartRateSampleSeconds = 0.0;
     Snapshot.bFlightEnabled = false;
     ResetDigitalFlightControls();
+    FlightTuningControls.Reset(Snapshot.ControllerJoystick1);
+    SyncFlightTuningSnapshot();
     Snapshot.AppliedGradePercent = 0.0;
     Snapshot.AltitudeMeters = 0.0;
     ResetHumanPoweredFlight();
@@ -676,6 +681,8 @@ void AArriettyPawn::ToggleFlight()
         GroundHeightMeters = LandingGroundHeight;
         Snapshot.bFlightEnabled = false;
         ResetDigitalFlightControls();
+        FlightTuningControls.Reset(Snapshot.ControllerJoystick1);
+        SyncFlightTuningSnapshot();
         ResetHumanPoweredFlight();
         Snapshot.Message = TEXT("Ground mode enabled");
         ShowVrAlert(TEXT("GROUND MODE"), 2.5);
@@ -684,9 +691,11 @@ void AArriettyPawn::ToggleFlight()
     {
         Snapshot.bFlightEnabled = true;
         ResetDigitalFlightControls(Snapshot.ControllerJoystick2);
+        FlightTuningControls.Reset(Snapshot.ControllerJoystick1);
+        SyncFlightTuningSnapshot();
         ResetHumanPoweredFlight(Snapshot.SpeedKmh);
-        Snapshot.Message = TEXT("Human-powered flight ready; each Joystick 2 gesture changes pitch or roll by one degree");
-        ShowVrAlert(TEXT("DIGITAL FLIGHT CONTROL\n1 GESTURE = 1 DEGREE\nJ2 BUTTON = RESET"), 3.5);
+        Snapshot.Message = TEXT("Human-powered flight ready; press Joystick 1 SW to tune propulsion, speed, climb, and response");
+        ShowVrAlert(TEXT("DIGITAL FLIGHT CONTROL\nJ1 SW = START TUNING\nJ2 = PITCH / ROLL"), 3.5);
     }
     UpdateWorldTransform(false);
 }
@@ -801,6 +810,8 @@ void AArriettyPawn::PumpControllerEvents()
             Snapshot.bControllerConnected = true;
             bControllerInputInitialized = false;
             ResetDigitalFlightControls();
+            FlightTuningControls.Reset();
+            SyncFlightTuningSnapshot();
             Snapshot.Message = TEXT("Controller ready; press Button 1 to start");
             ShowVrAlert(TEXT("CONTROLLER READY\nPRESS BUTTON 1"), 4.0);
             PlayControllerReadyTone();
@@ -819,6 +830,8 @@ void AArriettyPawn::PumpControllerEvents()
             Snapshot.ControllerButtonMask = 0;
             bControllerInputInitialized = false;
             ResetDigitalFlightControls();
+            FlightTuningControls.Reset();
+            SyncFlightTuningSnapshot();
             break;
         default:
             break;
@@ -909,6 +922,8 @@ void AArriettyPawn::HandleControllerSample(const FArriettyControllerSample& Samp
             TEXT("Controller input initialized with mask 0x%02X"),
             static_cast<uint32>(Sample.ButtonMask));
         DigitalFlightControls.Reset(Snapshot.ControllerJoystick2);
+        FlightTuningControls.Reset(Snapshot.ControllerJoystick1);
+        SyncFlightTuningSnapshot();
         SetPushToTalkHeld(ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 4));
         SetBrakeButtonHeld(ArriettyControllerProtocol::IsPressed(Sample.ButtonMask, 5));
         return;
@@ -946,6 +961,15 @@ void AArriettyPawn::HandleControllerSample(const FArriettyControllerSample& Samp
 
     if (Snapshot.bFlightEnabled)
     {
+        if (ArriettyControllerProtocol::IsPressed(PressedEdges, 6))
+        {
+            ApplyFlightTuningChange(
+                FlightTuningControls.PressSwitch(Snapshot.ControllerJoystick1),
+                TEXT("J1 BUTTON"));
+        }
+        ApplyFlightTuningChange(
+            FlightTuningControls.UpdateJoystick(Snapshot.ControllerJoystick1),
+            TEXT("J1"));
         if (ArriettyControllerProtocol::IsPressed(PressedEdges, 7))
         {
             PendingFlightButtonRollStep = 0;
@@ -960,6 +984,11 @@ void AArriettyPawn::HandleControllerSample(const FArriettyControllerSample& Samp
                 TEXT("J2"));
         }
         HandleFlightButtonEdges(PressedEdges, Sample.ButtonMask, Sample.ReceivedAtSeconds);
+    }
+    else if (ArriettyControllerProtocol::IsPressed(PressedEdges, 6))
+    {
+        Snapshot.Message = TEXT("Enable flight mode before starting flight tuning");
+        ShowVrAlert(TEXT("ENABLE FLIGHT MODE\nBEFORE TUNING"), 2.5);
     }
 }
 
@@ -1040,6 +1069,65 @@ void AArriettyPawn::ResetDigitalFlightControls(const FVector2D& CurrentAxes)
     DigitalFlightControls.Reset(CurrentAxes);
     Snapshot.CommandedPitchDegrees = 0.0;
     Snapshot.CommandedRollRightDegrees = 0.0;
+}
+
+void AArriettyPawn::ApplyFlightTuningChange(
+    const FArriettyFlightTuningChange& Change,
+    const TCHAR* Source)
+{
+    if (!Change.Any())
+    {
+        return;
+    }
+
+    SyncFlightTuningSnapshot();
+    const FString Status = FlightTuningControls.GetCompactStatus();
+    const TCHAR* Event = TEXT("FLIGHT_TUNING_STEP");
+    if (Change.bEntered)
+    {
+        Snapshot.Message = TEXT("Flight tuning started; fixed propulsion and six tuning items are active");
+        Event = TEXT("FLIGHT_TUNING_START");
+    }
+    else if (Change.bAdvanced)
+    {
+        Snapshot.Message = FString::Printf(TEXT("Previous value confirmed; %s"), *Status);
+        Event = TEXT("FLIGHT_TUNING_NEXT");
+    }
+    else if (Change.bCompleted)
+    {
+        Snapshot.Message = TEXT("Flight tuning completed; rider propulsion restored");
+        Event = TEXT("FLIGHT_TUNING_COMPLETE");
+    }
+    else
+    {
+        Snapshot.Message = Status;
+    }
+
+    if (Change.bCompleted)
+    {
+        ShowVrAlert(TEXT("TUNING COMPLETE\nRIDER POWER RESTORED"), 3.0);
+    }
+    else
+    {
+        ShowVrAlert(FString::Printf(
+            TEXT("%s\nJ1 LEFT / RIGHT\nJ1 SW = CONFIRM"),
+            *Status), 2.5);
+    }
+    UE_LOG(LogArriettyRide, Display, TEXT("%s: %s"), Source, *Status);
+    RecordTelemetry(Event);
+}
+
+void AArriettyPawn::SyncFlightTuningSnapshot()
+{
+    const FArriettyFlightTuningValues& Values = FlightTuningControls.GetValues();
+    Snapshot.bFlightTuningActive = FlightTuningControls.IsActive();
+    Snapshot.FlightTuningStatus = FlightTuningControls.GetCompactStatus();
+    Snapshot.FlightTestPropulsionPowerWatts = Values.TestPropulsionPowerWatts;
+    Snapshot.FlightAirspeedMultiplier = Values.AirspeedMultiplier;
+    Snapshot.FlightPositiveClimbMultiplier = Values.PositiveClimbMultiplier;
+    Snapshot.FlightPitchRateDegreesPerSecond = Values.PitchRateDegreesPerSecond;
+    Snapshot.FlightMaxElevatorVerticalSpeedMps = Values.MaxElevatorVerticalSpeedMps;
+    Snapshot.FlightBankRateDegreesPerSecond = Values.BankRateDegreesPerSecond;
 }
 
 void AArriettyPawn::SetPushToTalkHeld(bool bHeld)
@@ -1249,6 +1337,8 @@ void AArriettyPawn::PumpBluetoothEvents()
             Snapshot.AppliedGradePercent = 0.0;
             Snapshot.bFlightEnabled = false;
             ResetDigitalFlightControls();
+            FlightTuningControls.Reset(Snapshot.ControllerJoystick1);
+            SyncFlightTuningSnapshot();
             Snapshot.AltitudeMeters = 0.0;
             ResetHumanPoweredFlight();
             ShowVrAlert(FString::Printf(TEXT("BLUETOOTH ERROR\n%s"), *Event.Message), 5.0);
@@ -1526,8 +1616,10 @@ void AArriettyPawn::AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeco
     const double RiderPowerWatts = NowSeconds - LastFtmsSampleSeconds <= Arrietty::SampleStaleSeconds
         ? Snapshot.PowerWatts
         : 0.0;
-    const double PropulsionPowerWatts =
-        ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(RiderPowerWatts);
+    const FArriettyFlightTuningValues& Tuning = FlightTuningControls.GetValues();
+    const double PropulsionPowerWatts = FlightTuningControls.IsActive()
+        ? Tuning.TestPropulsionPowerWatts
+        : ArriettyTrainerProtocol::HumanPoweredFlightPropulsionPowerWatts(RiderPowerWatts);
     Snapshot.PropulsionPowerWatts = PropulsionPowerWatts;
     const FArriettyFlightStepResult FlightResult =
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
@@ -1537,7 +1629,8 @@ void AArriettyPawn::AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeco
             DigitalFlightControls.GetAileronInput(),
             Snapshot.EffectiveSteeringDegrees,
             DeltaSeconds,
-            bCanLand);
+            bCanLand,
+            Tuning);
     SyncHumanPoweredFlightSnapshot();
 
     if (FlightResult.bTookOff)
@@ -1579,7 +1672,8 @@ void AArriettyPawn::AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeco
     const double HorizontalSpeed = FMath::Sqrt(FMath::Max(
         0.0,
         FMath::Square(FlightState.AirspeedMetersPerSecond) -
-            FMath::Square(FlightState.VerticalSpeedMetersPerSecond)));
+            FMath::Square(FlightState.VerticalSpeedMetersPerSecond))) *
+        FMath::Max(1.0, Tuning.AirspeedMultiplier);
     const double AdvanceMeters = HorizontalSpeed * Delta;
     const FVector2D NextPosition = Snapshot.PositionMeters + FVector2D(
         FMath::Cos(MidpointHeading),
@@ -1620,7 +1714,9 @@ void AArriettyPawn::ResetHumanPoweredFlight(double InitialAirspeedKmh)
 
 void AArriettyPawn::SyncHumanPoweredFlightSnapshot()
 {
-    Snapshot.SpeedKmh = FlightState.AirspeedMetersPerSecond * 3.6;
+    const FArriettyFlightTuningValues& Tuning = FlightTuningControls.GetValues();
+    Snapshot.SpeedKmh = FlightState.AirspeedMetersPerSecond * 3.6 *
+        FMath::Max(1.0, Tuning.AirspeedMultiplier);
     Snapshot.AltitudeMeters = FlightState.AltitudeMeters;
     Snapshot.VerticalSpeedMetersPerSecond = FlightState.VerticalSpeedMetersPerSecond;
     Snapshot.BankDegrees = FlightState.BankDegrees;
@@ -1630,7 +1726,8 @@ void AArriettyPawn::SyncHumanPoweredFlightSnapshot()
     Snapshot.FlightControlAuthority = FlightState.ControlAuthority;
     Snapshot.bAircraftAirborne = FlightState.bAirborne;
     Snapshot.bAircraftStalled = FlightState.bStalled;
-    Snapshot.bAircraftOverspeed = Snapshot.SpeedKmh >= Arrietty::FlightOverspeedWarningKmh;
+    Snapshot.bAircraftOverspeed = FlightState.AirspeedMetersPerSecond * 3.6 >=
+        Arrietty::FlightOverspeedWarningKmh;
 }
 
 void AArriettyPawn::SyncNavigationSnapshot()
