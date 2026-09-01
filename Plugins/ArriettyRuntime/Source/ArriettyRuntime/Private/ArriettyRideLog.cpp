@@ -25,7 +25,7 @@ bool FArriettyRideLog::Start()
         return false;
     }
     StartedAtSeconds = FPlatformTime::Seconds();
-    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,rider_power_w,propulsion_power_w,heart_rate_bpm,distance_m,laps_completed,flight_mode,airborne,stalled,overspeed,altitude_agl_m,vertical_speed_mps,flight_path_angle_degrees,angle_of_attack_degrees,control_authority,bank_degrees,pitch_degrees,commanded_roll_right_degrees,commanded_pitch_up_degrees,flight_tuning_active,flight_tuning_status,test_propulsion_power_w,positive_climb_multiplier,pitch_rate_degrees_per_second,bank_rate_degrees_per_second,effective_mass_kg,glide_ratio,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,geospatial_navigation,longitude_degrees,latitude_degrees,ellipsoid_height_m,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset,ptt_held,voice_status,brake_button_held,trainer_grade_percent,steering_source\r\n"));
+    WriteUtf8(TEXT("timestamp,elapsed_s,event,speed_kmh,ftms_speed_kmh,cadence_rpm,rider_power_w,propulsion_power_w,heart_rate_bpm,fan_requested_level,fan_reported_level,fan_status,distance_m,laps_completed,flight_mode,airborne,stalled,overspeed,altitude_agl_m,vertical_speed_mps,flight_path_angle_degrees,angle_of_attack_degrees,control_authority,bank_degrees,pitch_degrees,commanded_roll_right_degrees,commanded_pitch_up_degrees,flight_tuning_active,flight_tuning_status,test_propulsion_power_w,positive_climb_multiplier,pitch_rate_degrees_per_second,bank_rate_degrees_per_second,effective_mass_kg,glide_ratio,xr_base_z_m,xr_navigation_z_m,xr_viewer_z_m,x_m,y_m,heading_degrees,geospatial_navigation,longitude_degrees,latitude_degrees,ellipsoid_height_m,raw_steering_degrees,effective_steering_degrees,csc_wheel_revolutions,csc_wheel_event_time_ticks,csc_wheel_stopped,low_speed_coast_stopped,t2_control_status,t2_control_preset,ptt_held,voice_status,brake_button_held,trainer_grade_percent,steering_source\r\n"));
     FArriettyRideSnapshot Empty;
     Record(TEXT("START"), Empty, 0.0, {}, {}, false, false);
     return true;
@@ -62,6 +62,9 @@ void FArriettyRideLog::Record(
         FString::Printf(TEXT("%d"), Snapshot.PowerWatts),
         FString::Printf(TEXT("%.1f"), Snapshot.PropulsionPowerWatts),
         HeartRate,
+        FString::Printf(TEXT("%d"), Snapshot.FanRequestedLevel),
+        FString::Printf(TEXT("%d"), Snapshot.FanReportedLevel),
+        Snapshot.FanStatus,
         FString::Printf(TEXT("%.3f"), Snapshot.DistanceMeters),
         FString::Printf(TEXT("%d"), Snapshot.LapsCompleted),
         Snapshot.bFlightEnabled ? TEXT("1") : TEXT("0"),

@@ -32,6 +32,15 @@ bool FArriettyFanController::Start()
         return false;
     }
     Socket->SetNonBlocking(true);
+    TSharedRef<FInternetAddr> LocalAddress = SocketSubsystem->CreateInternetAddr();
+    LocalAddress->SetAnyAddress();
+    LocalAddress->SetPort(0);
+    if (!Socket->Bind(*LocalAddress))
+    {
+        UE_LOG(LogArriettyFan, Error, TEXT("Could not bind fan UDP response socket"));
+        Stop();
+        return false;
+    }
     Destination = SocketSubsystem->CreateInternetAddr();
     bool bValidAddress = false;
     Destination->SetIp(TEXT("192.168.4.1"), bValidAddress);
@@ -44,8 +53,12 @@ bool FArriettyFanController::Start()
     }
 
     LastRequestedLevel = INDEX_NONE;
-    ReportedLevel = 0;
+    RequestedLevel = 0;
+    ReportedLevel = INDEX_NONE;
     LastSendSeconds = -1.0;
+    LastResponseSeconds = -1.0;
+    FirstUnansweredSendSeconds = -1.0;
+    Status = TEXT("WAITING FOR ESP32");
     UE_LOG(LogArriettyFan, Display, TEXT("Fan UDP target 192.168.4.1:%d"), Arrietty::FanUdpPort);
     return true;
 }
@@ -61,6 +74,7 @@ void FArriettyFanController::Stop()
     ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(Socket);
     Socket = nullptr;
     Destination.Reset();
+    Status = TEXT("STOPPED");
 }
 
 int32 FArriettyFanController::LevelForSpeed(double SpeedKmh)
@@ -82,7 +96,8 @@ void FArriettyFanController::Tick(double SpeedKmh, double NowSeconds)
     {
         return;
     }
-    const int32 RequestedLevel = LevelForSpeed(SpeedKmh);
+    PollResponses(NowSeconds);
+    RequestedLevel = LevelForSpeed(SpeedKmh);
     if (RequestedLevel == LastRequestedLevel &&
         LastSendSeconds >= 0.0 &&
         NowSeconds - LastSendSeconds < Arrietty::FanResendSeconds)
@@ -92,17 +107,102 @@ void FArriettyFanController::Tick(double SpeedKmh, double NowSeconds)
     if (SendCommand(FString::Printf(TEXT("LEVEL %d"), RequestedLevel)))
     {
         LastRequestedLevel = RequestedLevel;
-        ReportedLevel = RequestedLevel;
         LastSendSeconds = NowSeconds;
+        if (FirstUnansweredSendSeconds < 0.0)
+        {
+            FirstUnansweredSendSeconds = NowSeconds;
+        }
+        if (LastResponseSeconds < 0.0)
+        {
+            Status = TEXT("WAITING FOR ESP32");
+        }
     }
+    PollResponses(NowSeconds);
 }
 
 void FArriettyFanController::CorrectReportedLevel(int32 Delta)
 {
-    ReportedLevel = FMath::Clamp(ReportedLevel + Delta, 0, Arrietty::FanLevelCount);
-    SendCommand(FString::Printf(TEXT("SYNC %d"), ReportedLevel));
+    const int32 BaseLevel = ReportedLevel == INDEX_NONE ? RequestedLevel : ReportedLevel;
+    const int32 CorrectedLevel = FMath::Clamp(
+        BaseLevel + Delta, 0, Arrietty::FanLevelCount);
+    SendCommand(FString::Printf(TEXT("SYNC %d"), CorrectedLevel));
+    RequestedLevel = CorrectedLevel;
+    ReportedLevel = CorrectedLevel;
     LastRequestedLevel = INDEX_NONE;
-    UE_LOG(LogArriettyFan, Display, TEXT("Fan state corrected to level %d"), ReportedLevel);
+    Status = TEXT("WAITING FOR SYNC ACK");
+    UE_LOG(LogArriettyFan, Display, TEXT("Fan state correction requested: level %d"), CorrectedLevel);
+}
+
+TOptional<int32> FArriettyFanController::ParseResponseLevel(const FString& Response)
+{
+    FString Trimmed = Response;
+    Trimmed.TrimStartAndEndInline();
+    static const FString LevelPrefix = TEXT("OK LEVEL ");
+    static const FString SyncPrefix = TEXT("OK SYNC ");
+    const FString* Prefix = Trimmed.StartsWith(LevelPrefix, ESearchCase::IgnoreCase)
+        ? &LevelPrefix
+        : (Trimmed.StartsWith(SyncPrefix, ESearchCase::IgnoreCase) ? &SyncPrefix : nullptr);
+    if (!Prefix)
+    {
+        return {};
+    }
+    FString LevelText = Trimmed.Mid(Prefix->Len());
+    FString Unused;
+    FString NumericText;
+    if (LevelText.Split(TEXT(" "), &NumericText, &Unused))
+    {
+        LevelText = MoveTemp(NumericText);
+    }
+    if (!LevelText.IsNumeric())
+    {
+        return {};
+    }
+    const int32 Level = FCString::Atoi(*LevelText);
+    if (Level < 0 || Level > Arrietty::FanLevelCount)
+    {
+        return {};
+    }
+    return Level;
+}
+
+void FArriettyFanController::PollResponses(double NowSeconds)
+{
+    if (!Socket)
+    {
+        return;
+    }
+    uint32 PendingSize = 0;
+    while (Socket->HasPendingData(PendingSize))
+    {
+        TArray<uint8> Buffer;
+        Buffer.SetNumUninitialized(FMath::Min<uint32>(PendingSize, 1024));
+        TSharedRef<FInternetAddr> Sender =
+            ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
+        int32 BytesRead = 0;
+        if (!Socket->RecvFrom(Buffer.GetData(), Buffer.Num(), BytesRead, *Sender) || BytesRead <= 0)
+        {
+            break;
+        }
+        const FUTF8ToTCHAR Converted(
+            reinterpret_cast<const ANSICHAR*>(Buffer.GetData()), BytesRead);
+        const FString Response(Converted.Length(), Converted.Get());
+        const TOptional<int32> Level = ParseResponseLevel(Response);
+        if (!Level.IsSet())
+        {
+            UE_LOG(LogArriettyFan, Warning, TEXT("Unexpected ESP32 fan response: %s"), *Response);
+            continue;
+        }
+        ReportedLevel = Level.GetValue();
+        LastResponseSeconds = NowSeconds;
+        FirstUnansweredSendSeconds = -1.0;
+        Status = FString::Printf(TEXT("CONNECTED LEVEL %d"), ReportedLevel);
+        UE_LOG(LogArriettyFan, Display, TEXT("Fan response: %s"), *Response);
+    }
+    if (FirstUnansweredSendSeconds >= 0.0 &&
+        NowSeconds - FirstUnansweredSendSeconds >= 12.0)
+    {
+        Status = TEXT("NO RESPONSE - CONNECT WI-FI Arrietty-Fan");
+    }
 }
 
 bool FArriettyFanController::SendCommand(const FString& Command)

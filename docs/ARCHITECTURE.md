@@ -28,7 +28,9 @@ HMD再センタリングはCamera Componentのゲームスレッド姿勢を使�
 
 ## スレッド境界
 
-BLEの探索、接続、GATT通知、Control Point応答待ちはワーカースレッドです。UnrealのActor、Component、Widget、World、CSVはゲームスレッドだけから操作します。ワーカーからのイベントには世代番号を付け、前回走行の遅延通知を破棄します。
+BLEの探索、接続、GATT通知、Control Point応答待ちはワーカースレッドです。T2接続後もHeart Rate Service `0x180D`のactive scanを継続し、Garminの転送開始が遅れた場合や切断後もHeart Rate Measurement `0x2A37`へ自動接続します。心拍側の不在や接続失敗はT2接続を停止させません。UnrealのActor、Component、Widget、World、CSVはゲームスレッドだけから操作します。ワーカーからのイベントには世代番号を付け、前回走行の遅延通知を破棄します。
+
+ESP32-IRは`Arrietty-Fan` SoftAPの`192.168.4.1:4210`へUDPで`LEVEL 0..6`を送ります。ゲーム側UDPソケットはESP32の`OK LEVEL`／`OK SYNC`応答を受信し、送信要求値と実機応答値を別々に保持します。12秒以上応答がなければWi-Fi接続エラーとしてUIへ表示します。
 
 ESP32のCOM探索と読取も専用ワーカースレッドです。ゲームスレッドの`AArriettyPawn`はキューを毎フレーム排出し、Button 1/2は立ち上がり、Button 5/6は押下と解放の両方を操作へ変換します。Button 1は開始後に直近の走行軌跡を約2 m巻き戻し、Button 5はUDPでWindows音声ブリッジへPTT edgeを送り、Button 6は押下中だけT2のFTMS勾配を3%にします。Joystick 1 XとJoystick 2は0.45の開始閾値と0.20の復帰閾値を持つedge検出で、倒しっぱなしを反復させません。Joystick 1 SWは飛行チューニングを開始／確定し、Xの左右ジェスチャーを選択値の1段階変更へ変換します。Joystick 2は1ジェスチャーを1°の目標変更へ変換します。Button 3/4は80 msの同時押し判定を通し、単独では左／右ロール、同時では機首上げです。Joystick 2 SWはピッチ／右ロール目標を0°へ戻します。ハンドル入力は地上で前輪操舵、飛行中は従来どおりラダーになります。
 

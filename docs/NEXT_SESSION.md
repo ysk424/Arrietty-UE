@@ -4,7 +4,9 @@
 
 ## 今日完了したこと
 
-- Arrietty UE版v0.13.0として、Garmin心拍、ESP32-IR風量、スタートからの経過時間、入力統一と新しい飛行物理を統合した。
+- Arrietty UE版v0.13.1として、Garmin心拍、ESP32-IR風量、スタートからの経過時間、入力統一と新しい飛行物理を統合した。
+- Garmin心拍は走行中の継続探索と切断後の自動再接続へ変更した。Garminリセット後の実機試験で`Forerunner`のHeart Rate Service `0x180D`／Measurement `0x2A37`へ接続し、10秒間に20通知、74〜80 bpmをPCで受信した。
+- ESP32-IRはUDP送信だけでなく`OK LEVEL`／`OK SYNC`応答を受信し、要求レベル、実機レベル、接続状態を計器・デスクトップ・CSVへ表示する。`Arrietty-Fan`接続と`OK LEVEL 0 TARGET 0`を実機確認した。
 - Joystick 2を連続アナログ入力から、中央へ戻すたびにピッチ／右ロール目標を1°増減するデジタル入力へ変更した。SWは両目標を0°へ戻す。
 - Button 3単独を左ロール1°、Button 4単独を右ロール1°、80 ms以内の3+4同時押しを機首上げ1°へ割り当てた。ハンドルのラダーは変更していない。
 - Button 5の`POWER x5`を廃止してPTTへ変更した。Windows音声ブリッジ、OpenAI文字起こし／音声合成、同じWSL/tmux Codexペインへの送信、現在のCodex用回答監視を追加した。
@@ -58,7 +60,7 @@
 - Google ion asset: `2275207`
 - Google Tiles: SSE `16`、credits `true`、Movable
 - CourseStart: longitude `179.19678290`、latitude `-8.52398430`、ellipsoid height 約`41.8356 m`、World Z `700 cm`
-- 未完: 実対気速度＋パワーブーストx10の実機感覚、ピッチ／ロール方向と上昇・旋回挙動、140 W前後の上昇／滑空バランス、2 km rolloutの実機再試験、タイトル画像import、Map Check、Earth cook/package、v0.13.0最終HMD＋T2受入試験。
+- 未完: 実対気速度＋パワーブーストx10の実機感覚、ピッチ／ロール方向と上昇・旋回挙動、140 W前後の上昇／滑空バランス、2 km rolloutの実機再試験、タイトル画像import、Map Check、Earth cook/package、v0.13.1最終HMD＋T2受入試験。
 
 ## 既存の基準記録
 

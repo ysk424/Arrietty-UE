@@ -1,6 +1,6 @@
 # Arrietty
 
-Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定したVIVEコントローラーを使い、Unreal EngineのLevel内を走行・人力飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.13.0です。
+Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定したVIVEコントローラーを使い、Unreal EngineのLevel内を走行・人力飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.13.1です。
 
 ## 確認済み開発環境
 
@@ -78,8 +78,8 @@ PTTを使う日は、Codexが動作しているWSL/tmuxペインから最初に`
 ## 維持した機能
 
 - T2のFTMS Indoor Bike Data通知による速度・ケイデンス・パワー
-- Garminを含む標準BLE Heart Rate Service `0x180D`／Heart Rate Measurement `0x2A37`による心拍数。T2検出後も10秒間探索し、見つからない場合もT2走行は継続
-- ESP32-IR（`192.168.4.1:4210`）へ走行速度に応じた`LEVEL 0..6`をUDP送信し、0〜30 km/hで風量を自動調整
+- Garminを含む標準BLE Heart Rate Service `0x180D`／Heart Rate Measurement `0x2A37`による心拍数。走行中も継続探索し、転送を後から開始した場合や切断後も自動接続する。見つからない場合もT2走行は継続
+- ESP32-IR（Wi-Fi `Arrietty-Fan`、`192.168.4.1:4210`）へ走行速度に応じた`LEVEL 0..6`をUDP送信し、0〜30 km/hで風量を自動調整。ESP32の応答から実レベルと接続状態を表示する
 - FTMS Control Pointの制御権取得、通常勾配0%／Button 6押下中3%、風速0、Cw 0.51 kg/m、P1〜P7のCrr
 - CSC実円盤停止判定、ケイデンス0かつ5 km/h以下の惰性停止
 - SteamVRが左右どちらに割り当てても追跡中のOpenXRグリップを自動選択し、その最初の姿勢を操舵中央として校正
@@ -114,8 +114,8 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 
 ## 検証状態
 
-- v0.13.0 UE 5.8.2 Editor / Win64 Development Game: ビルド成功
-- v0.13.0: Garmin心拍、ESP32-IR風量制御、経過時間表示、実対気速度表示、揚力／ロール物理を統合
+- v0.13.1 UE 5.8.2 Editor / Win64 Development Game: ビルド成功
+- v0.13.1: Garmin心拍の継続探索／再接続とESP32-IR応答確認・実レベル表示を統合
 - Visual Studio 2026ソリューション: 生成成功（ToolsVersion 18.0）
 - UE Automation: 11テスト成功（飛行チューニング、デジタル操舵、人力飛行、ESP32シリアルプロトコル、ESP32-IR風量マッピング、心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
 - NullRHIゲーム起動: `ArriettyRuntime`、`ArriettyGameMode`、`ArriettyDemo` Levelのロード成功

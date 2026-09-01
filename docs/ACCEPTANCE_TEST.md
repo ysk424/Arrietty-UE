@@ -5,7 +5,7 @@
 ## 前提
 
 - SteamVR/OpenXRランタイムを最新版にする。
-- HTC VIVE HMD、ステム固定コントローラー`LHR-9EFF8645`、CYCPLUS T2を起動する。コントローラーのSteamVR左右割り当てはどちらでもよい。Garminの`心拍転送／Broadcast Heart Rate`はBLEで開始しておく。PCからESP32-IRの`192.168.4.1:4210`へ到達できることも確認する。
+- HTC VIVE HMD、ステム固定コントローラー`LHR-9EFF8645`、CYCPLUS T2を起動する。コントローラーのSteamVR左右割り当てはどちらでもよい。Garminのスマホ接続を切り、`心拍転送／Broadcast Heart Rate`をBLEで開始する。PCのWi-Fiを`Arrietty-Fan`へ接続し、ESP32-IRの`192.168.4.1:4210`へ到達できることも確認する。
 - Windows Bluetoothで他のトレーニングアプリがT2を使用していないことを確認する。
 - `Arrietty.uproject`を開き、`ArriettyDemo` Levelを選び、Play方式を`VR Preview`にする。
 - Windowsユーザー環境変数`OPENAI_API_KEY`を設定し、Codexが動くWSL/tmuxペインで`./Tools/start-arrietty-voice-bridge.sh`を実行する。`Arrietty Voice Bridge started`を確認する。
@@ -36,8 +36,8 @@
 7. 惰性で5 km/h以下かCSC円盤停止になると表示速度と移動が0になる。低速で漕ぐと再発進する。
 8. テンキー7またはButton 2で人力飛行モードにする。計器の対気速度が倍率なしの物理値を示すこと、20 km/h以上で十分な機首上げを与えるか、24 km/h付近で機首上げ目標を+1°にすると揚力が重量を超えて離陸することを確認する。機首上げで迎角・揚力・FPA・高度が増え、ロールすると旋回しながら揚力の鉛直成分が減ることを確認する。24 km/hを基準に低速ではピッチ／バンクの到達が鈍く、高速では速くなるが、最大ピッチ±12°／最大バンク±25°を超えない。パワーブーストは既定x10のままとし、上昇力が不足する場合は速度倍率ではなく推進力側を増やす。ハンドルは地上の前輪操舵ではなく飛行中のラダーとしてヨーを動かす。18 km/h未満で`STALL`警告が出て、機首下げ目標かつ20.5 km/h以上にすると回復する。コース外へ飛べるが、空中で地上モードへ切り替えられず、`SecretWorldRideSurface`上へ着陸後に切り替えられる。
 9. 緑色の外枠を持つ不透明な54×30cmの計器が仮想自転車の正面1.25 m、中心高1.30 mに表示される。頭を右へ振ると計器は視界の左へ移るが、板自体はHMDへ追従回転せず、仮想自転車の進行方向に固定される。
-10. 計器に`ON GROUND`／`AIRBORNE`、対気速度を主表示する人工水平儀、Garmin心拍、ケイデンス、実測／推進パワー、距離、`T+00:00:00`から進む経過時間、滑走路基準の`ALT AGL`、昇降率、Heading、Pitch、Bank、FPA、AoA、操舵効率、失速／過速度状態が表示される。Cesium Levelではlongitude、latitude、別値として`ELLIP H`も表示される。心拍計がない場合もT2走行は継続する。
-11. 速度上昇に従ってESP32-IRの風量が0〜6へ上がり、停止時に0へ戻る。実機表示と内部レベルがずれた場合は`F9`／`F10`で1段階補正する。
+10. 計器に`ON GROUND`／`AIRBORNE`、対気速度を主表示する人工水平儀、Garmin心拍、ケイデンス、実測／推進パワー、距離、`T+00:00:00`から進む経過時間、滑走路基準の`ALT AGL`、昇降率、Heading、Pitch、Bank、FPA、AoA、操舵効率、失速／過速度状態が表示される。Garminを走行開始後に心拍転送へ切り替えても自動的に`CONNECTED: Forerunner`となりBPMが表示される。転送停止後は再探索し、心拍計がない場合もT2走行は継続する。
+11. 速度上昇に従ってESP32-IRの要求／応答風量が0〜6へ上がり、停止時に0へ戻る。画面へ`CONNECTED LEVEL n`が表示され、Wi-Fi未接続時は`NO RESPONSE - CONNECT WI-FI Arrietty-Fan`となる。実機表示と内部レベルがずれた場合は`F9`／`F10`で1段階補正する。
 12. 操舵コントローラー追跡喪失、コース端、BLEエラーでは短時間のHMD前方警告が表示される。
 13. P1〜P7を切り替え、成功応答後だけ表示P番号が変わる。
 14. `Back to Real World`後、`Saved\arrietty_ride.csv`最終行が`BACK_TO_REAL_WORLD`である。
@@ -52,6 +52,7 @@
 v0.11.0のButton 5 PTTは、実機Button 5、VIVEマイク、Codex応答、GPT TTS、PCスピーカーの往復で合格済み。J1飛行チューニング、1°デジタル操舵、Button 3/4補助、高度表示、パネル位置変更はAutomation 10件、Editorビルドまで確認済みであり、実機HMDで再確認する。
 v0.12.0のGarmin心拍、ESP32-IR風量制御、経過時間表示はAutomation 11件とEditorビルドに合格し、実機統合試験待ちである。
 v0.13.0の入力統一、ピッチ揚力、ロール時の鉛直揚力低下、実対気速度表示、パワーブーストx10はAutomation 11件、Editorビルド、Win64 Development Gameビルドに合格した。
+v0.13.1では実機で`Arrietty-Fan`への接続、LEVEL 1への駆動、LEVEL 0への停止と各UDP応答を確認した。Garminリセット後の`Forerunner`へHeart Rate Service `0x180D`／Measurement `0x2A37`で接続し、10秒間に20通知、74〜80 bpmをPCで受信した。継続探索／再接続を含むEditor・Gameビルドと、心拍データ解析／ファン応答解析を含むAutomation 11件に合格した。
 SteamVRが`LeftGrip`へ割り当てる回の自動選択はコードとビルドで対応済みだが、実機割り当てが左になった回に再確認する。
 
 2026-08-29のEarth Level部分試験では、Google地表と空、旧Joystick 2アナログ操舵、テンキー開始／飛行モードを確認した。旧100 m滑走路端で止まったため、CourseStartに不可視2 km rollout面を追加し、Editorビルドと通常PIE smoke testに成功した。追加後のHMD＋T2飛行チューニング実走は未実施である。

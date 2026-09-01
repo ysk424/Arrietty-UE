@@ -7,7 +7,7 @@
 
 namespace Arrietty
 {
-inline constexpr TCHAR Version[] = TEXT("0.13.0");
+inline constexpr TCHAR Version[] = TEXT("0.13.1");
 inline constexpr TCHAR SteeringControllerSerial[] = TEXT("LHR-9EFF8645");
 inline constexpr TCHAR RideSurfaceTag[] = TEXT("SecretWorldRideSurface");
 inline constexpr double EyeHeightMeters = 1.5;
@@ -158,6 +158,9 @@ struct FArriettyRideSnapshot
     double PropulsionPowerWatts = 0.0;
     TOptional<uint16> HeartRateBpm;
     FString HeartRateStatus = TEXT("NOT CONNECTED");
+    int32 FanRequestedLevel = 0;
+    int32 FanReportedLevel = INDEX_NONE;
+    FString FanStatus = TEXT("NOT STARTED");
     FString ControllerStatus = TEXT("SEARCHING: USB controller");
     bool bControllerConnected = false;
     FVector2D ControllerJoystick1 = FVector2D::ZeroVector;

@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <cwctype>
 #include <deque>
@@ -215,16 +216,6 @@ void FArriettyBluetoothManager::WorkerMain(
                 }
                 ScanCondition.wait_for(Lock, std::chrono::milliseconds(100));
             }
-            // Garmin watches can advertise the standard Heart Rate service less
-            // frequently than the trainer. Keep the active scan open long enough
-            // to receive a complete advertising cycle after the T2 is found.
-            if (DeviceAddress != 0 && HeartRateDeviceAddress == 0 && !bStopRequested.Load())
-            {
-                ScanCondition.wait_for(
-                    Lock,
-                    std::chrono::seconds(10),
-                    [&] { return HeartRateDeviceAddress != 0 || bStopRequested.Load(); });
-            }
         }
         Watcher.Stop();
         Watcher.Received(ScanToken);
@@ -427,14 +418,38 @@ void FArriettyBluetoothManager::WorkerMain(
         GattDeviceService HeartRateService{nullptr};
         GattCharacteristic HeartRateMeasurement{nullptr};
         event_token HeartRateToken{};
+        bool bHeartRateHandlerRegistered = false;
         bool bHeartRateEnabled = false;
         bool bHeartRateDisconnectReported = false;
-        if (HeartRateDeviceAddress != 0)
+
+        const auto CloseHeartRate = [&]
         {
+            if (bHeartRateHandlerRegistered && HeartRateMeasurement)
+            {
+                try
+                {
+                    HeartRateMeasurement.ValueChanged(HeartRateToken);
+                }
+                catch (...)
+                {
+                }
+            }
+            bHeartRateHandlerRegistered = false;
+            bHeartRateEnabled = false;
+            if (HeartRateService) HeartRateService.Close();
+            if (HeartRateDevice) HeartRateDevice.Close();
+            HeartRateMeasurement = nullptr;
+            HeartRateService = nullptr;
+            HeartRateDevice = nullptr;
+        };
+
+        const auto TryConnectHeartRate = [&](uint64 Address)
+        {
+            CloseHeartRate();
             try
             {
                 HeartRateDevice = BluetoothLEDevice::FromBluetoothAddressAsync(
-                    HeartRateDeviceAddress).get();
+                    Address).get();
                 if (!HeartRateDevice)
                 {
                     throw std::runtime_error("Windows could not open the BLE heart-rate sensor");
@@ -474,14 +489,15 @@ void FArriettyBluetoothManager::WorkerMain(
                         Event.ReceivedAtSeconds = FPlatformTime::Seconds();
                         QueueEvent(MoveTemp(Event));
                     });
+                bHeartRateHandlerRegistered = true;
                 if (HeartRateMeasurement.WriteClientCharacteristicConfigurationDescriptorAsync(
                         GattClientCharacteristicConfigurationDescriptorValue::Notify).get()
                     != GattCommunicationStatus::Success)
                 {
-                    HeartRateMeasurement.ValueChanged(HeartRateToken);
                     throw std::runtime_error("Could not subscribe to Heart Rate Measurement 0x2A37");
                 }
                 bHeartRateEnabled = true;
+                bHeartRateDisconnectReported = false;
 
                 FArriettyBluetoothEvent Event;
                 Event.Generation = WorkerGeneration;
@@ -489,9 +505,11 @@ void FArriettyBluetoothManager::WorkerMain(
                 Event.Message = FString::Printf(
                     TEXT("CONNECTED: %s"), HeartRateDevice.Name().c_str());
                 QueueEvent(MoveTemp(Event));
+                return true;
             }
             catch (const winrt::hresult_error& Error)
             {
+                CloseHeartRate();
                 FArriettyBluetoothEvent Event;
                 Event.Generation = WorkerGeneration;
                 Event.Type = EArriettyBluetoothEventType::HeartRateUnavailable;
@@ -499,22 +517,85 @@ void FArriettyBluetoothManager::WorkerMain(
                     TEXT("UNAVAILABLE: Windows Bluetooth 0x%08x"),
                     static_cast<uint32>(Error.code().value));
                 QueueEvent(MoveTemp(Event));
+                return false;
             }
             catch (const std::exception& Error)
             {
+                CloseHeartRate();
                 FArriettyBluetoothEvent Event;
                 Event.Generation = WorkerGeneration;
                 Event.Type = EArriettyBluetoothEventType::HeartRateUnavailable;
                 Event.Message = FString::Printf(TEXT("UNAVAILABLE: %s"), UTF8_TO_TCHAR(Error.what()));
                 QueueEvent(MoveTemp(Event));
+                return false;
             }
-        }
-        else
+        };
+
+        if (HeartRateDeviceAddress != 0)
         {
+            TryConnectHeartRate(HeartRateDeviceAddress);
+        }
+
+        std::atomic<uint64> PendingHeartRateAddress{0};
+        BluetoothLEAdvertisementWatcher HeartRateWatcher;
+        HeartRateWatcher.ScanningMode(BluetoothLEScanningMode::Active);
+        const event_token HeartRateScanToken = HeartRateWatcher.Received(
+            [&](BluetoothLEAdvertisementWatcher const&,
+                BluetoothLEAdvertisementReceivedEventArgs const& Args)
+            {
+                for (const winrt::guid& ServiceUuid : Args.Advertisement().ServiceUuids())
+                {
+                    if (ServiceUuid == HeartRateServiceUuid)
+                    {
+                        PendingHeartRateAddress.store(Args.BluetoothAddress());
+                        break;
+                    }
+                }
+            });
+        bool bHeartRateWatcherRunning = false;
+        const auto StartHeartRateWatcher = [&]
+        {
+            if (!bHeartRateWatcherRunning)
+            {
+                try
+                {
+                    PendingHeartRateAddress.store(0);
+                    HeartRateWatcher.Start();
+                    bHeartRateWatcherRunning = true;
+                }
+                catch (const winrt::hresult_error& Error)
+                {
+                    FArriettyBluetoothEvent Event;
+                    Event.Generation = WorkerGeneration;
+                    Event.Type = EArriettyBluetoothEventType::HeartRateUnavailable;
+                    Event.Message = FString::Printf(
+                        TEXT("SCAN UNAVAILABLE: Windows Bluetooth 0x%08x"),
+                        static_cast<uint32>(Error.code().value));
+                    QueueEvent(MoveTemp(Event));
+                }
+            }
+        };
+        const auto StopHeartRateWatcher = [&]
+        {
+            if (bHeartRateWatcherRunning)
+            {
+                try
+                {
+                    HeartRateWatcher.Stop();
+                }
+                catch (...)
+                {
+                }
+                bHeartRateWatcherRunning = false;
+            }
+        };
+        if (!bHeartRateEnabled)
+        {
+            StartHeartRateWatcher();
             FArriettyBluetoothEvent Event;
             Event.Generation = WorkerGeneration;
             Event.Type = EArriettyBluetoothEventType::HeartRateUnavailable;
-            Event.Message = TEXT("NOT FOUND: enable Garmin Broadcast Heart Rate (BLE), then restart the ride");
+            Event.Message = TEXT("SEARCHING: enable Garmin Broadcast Heart Rate (BLE)");
             QueueEvent(MoveTemp(Event));
         }
 
@@ -525,6 +606,7 @@ void FArriettyBluetoothManager::WorkerMain(
             QueueEvent(MoveTemp(Event));
         }
 
+        double NextHeartRateConnectionAttemptSeconds = 0.0;
         while (!bStopRequested.Load() && Device.ConnectionStatus() == BluetoothConnectionStatus::Connected)
         {
             FControlRequest Request;
@@ -556,6 +638,22 @@ void FArriettyBluetoothManager::WorkerMain(
                 Event.GradePercent = CurrentGradePercent;
                 QueueEvent(MoveTemp(Event));
             }
+            const double NowSeconds = FPlatformTime::Seconds();
+            if (!bHeartRateEnabled && NowSeconds >= NextHeartRateConnectionAttemptSeconds)
+            {
+                const uint64 PendingAddress = PendingHeartRateAddress.exchange(0);
+                if (PendingAddress != 0)
+                {
+                    if (TryConnectHeartRate(PendingAddress))
+                    {
+                        StopHeartRateWatcher();
+                    }
+                    else
+                    {
+                        NextHeartRateConnectionAttemptSeconds = NowSeconds + 5.0;
+                    }
+                }
+            }
             if (bHeartRateEnabled && !bHeartRateDisconnectReported &&
                 HeartRateDevice.ConnectionStatus() != BluetoothConnectionStatus::Connected)
             {
@@ -563,16 +661,16 @@ void FArriettyBluetoothManager::WorkerMain(
                 FArriettyBluetoothEvent Event;
                 Event.Generation = WorkerGeneration;
                 Event.Type = EArriettyBluetoothEventType::HeartRateUnavailable;
-                Event.Message = TEXT("DISCONNECTED");
+                Event.Message = TEXT("DISCONNECTED - SEARCHING");
                 QueueEvent(MoveTemp(Event));
+                CloseHeartRate();
+                StartHeartRateWatcher();
+                NextHeartRateConnectionAttemptSeconds = NowSeconds + 1.0;
             }
             FPlatformProcess::Sleep(0.1f);
         }
 
-        if (!bStopRequested.Load())
-        {
-            throw std::runtime_error("The T2 Bluetooth connection was lost");
-        }
+        const bool bTrainerConnectionLost = !bStopRequested.Load();
 
         if (bCscEnabled)
         {
@@ -580,6 +678,8 @@ void FArriettyBluetoothManager::WorkerMain(
                 GattClientCharacteristicConfigurationDescriptorValue::None).get();
             CscMeasurement.ValueChanged(CscToken);
         }
+        StopHeartRateWatcher();
+        HeartRateWatcher.Received(HeartRateScanToken);
         if (bHeartRateEnabled)
         {
             try
@@ -590,19 +690,21 @@ void FArriettyBluetoothManager::WorkerMain(
             catch (...)
             {
             }
-            HeartRateMeasurement.ValueChanged(HeartRateToken);
         }
+        CloseHeartRate();
         IndoorBikeData.WriteClientCharacteristicConfigurationDescriptorAsync(
             GattClientCharacteristicConfigurationDescriptorValue::None).get();
         IndoorBikeData.ValueChanged(TrainerToken);
         ControlPoint.WriteClientCharacteristicConfigurationDescriptorAsync(
             GattClientCharacteristicConfigurationDescriptorValue::None).get();
         ControlPoint.ValueChanged(ControlToken);
-        if (HeartRateService) HeartRateService.Close();
-        if (HeartRateDevice) HeartRateDevice.Close();
         if (CscService) CscService.Close();
         FtmsService.Close();
         Device.Close();
+        if (bTrainerConnectionLost)
+        {
+            throw std::runtime_error("The T2 Bluetooth connection was lost");
+        }
     }
     catch (const winrt::hresult_error& Error)
     {

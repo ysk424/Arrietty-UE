@@ -297,13 +297,19 @@ void UArriettyControlWidget::Refresh()
     const FString HeartRate = State.HeartRateBpm.IsSet()
         ? FString::Printf(TEXT("%u bpm"), State.HeartRateBpm.GetValue())
         : TEXT("-- bpm");
+    const FString FanReportedLevel = State.FanReportedLevel == INDEX_NONE
+        ? TEXT("?")
+        : FString::FromInt(State.FanReportedLevel);
     TelemetryText->SetText(FText::FromString(FString::Printf(
-        TEXT("%.2f km/h   %.0f rpm   %d W   HR %s\nHeart sensor: %s"),
+        TEXT("%.2f km/h   %.0f rpm   %d W   HR %s\nHeart sensor: %s\nFan: requested %d / reported %s - %s"),
         State.SpeedKmh,
         State.CadenceRpm,
         State.PowerWatts,
         *HeartRate,
-        *State.HeartRateStatus)));
+        *State.HeartRateStatus,
+        State.FanRequestedLevel,
+        *FanReportedLevel,
+        *State.FanStatus)));
     DistanceText->SetText(FText::FromString(FString::Printf(
         TEXT("Distance %.1f m   Laps completed %d"), State.DistanceMeters, State.LapsCompleted)));
     LogText->SetText(FText::FromString(FString::Printf(

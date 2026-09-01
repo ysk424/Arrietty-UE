@@ -406,10 +406,14 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     const FString HeartRate = Snapshot.HeartRateBpm.IsSet()
         ? FString::Printf(TEXT("%u"), Snapshot.HeartRateBpm.GetValue())
         : TEXT("---");
+    const FString FanLevel = Snapshot.FanReportedLevel == INDEX_NONE
+        ? TEXT("?")
+        : FString::FromInt(Snapshot.FanReportedLevel);
     SensorText->SetText(FText::FromString(FString::Printf(
-        TEXT("CAD %3.0f rpm  HR %s  DIST %s"),
+        TEXT("CAD %3.0f rpm  HR %s  FAN %s/6  DIST %s"),
         Snapshot.CadenceRpm,
         *HeartRate,
+        *FanLevel,
         *Distance)));
     if (Snapshot.HeartRateBpm.IsSet())
     {

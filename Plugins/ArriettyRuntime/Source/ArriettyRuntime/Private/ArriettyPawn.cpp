@@ -232,6 +232,9 @@ void AArriettyPawn::Tick(float DeltaSeconds)
     if (FanController)
     {
         FanController->Tick(Snapshot.SpeedKmh, NowSeconds);
+        Snapshot.FanRequestedLevel = FanController->GetRequestedLevel();
+        Snapshot.FanReportedLevel = FanController->GetReportedLevel();
+        Snapshot.FanStatus = FanController->GetStatus();
     }
     UpdateInstrumentAnchor();
     UpdateInstrumentWidget();
