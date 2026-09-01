@@ -5,21 +5,21 @@
 
 namespace
 {
-constexpr double GestureTrigger = 0.45;
-constexpr double GestureRelease = 0.20;
+constexpr double TuningGestureTrigger = 0.45;
+constexpr double TuningGestureRelease = 0.20;
 }
 
 void FArriettyFlightTuningControls::Reset(const FVector2D& CurrentAxes)
 {
     bActive = false;
     Parameter = EArriettyFlightTuningParameter::TestPropulsionPower;
-    bHorizontalArmed = FMath::Abs(CurrentAxes.X) <= GestureRelease;
+    bHorizontalArmed = FMath::Abs(CurrentAxes.X) <= TuningGestureRelease;
 }
 
 FArriettyFlightTuningChange FArriettyFlightTuningControls::PressSwitch(
     const FVector2D& CurrentAxes)
 {
-    bHorizontalArmed = FMath::Abs(CurrentAxes.X) <= GestureRelease;
+    bHorizontalArmed = FMath::Abs(CurrentAxes.X) <= TuningGestureRelease;
     if (!bActive)
     {
         bActive = true;
@@ -48,13 +48,13 @@ FArriettyFlightTuningChange FArriettyFlightTuningControls::UpdateJoystick(
     }
     if (!bHorizontalArmed)
     {
-        if (FMath::Abs(Axes.X) <= GestureRelease)
+        if (FMath::Abs(Axes.X) <= TuningGestureRelease)
         {
             bHorizontalArmed = true;
         }
         return {};
     }
-    if (FMath::Abs(Axes.X) < GestureTrigger)
+    if (FMath::Abs(Axes.X) < TuningGestureTrigger)
     {
         return {};
     }

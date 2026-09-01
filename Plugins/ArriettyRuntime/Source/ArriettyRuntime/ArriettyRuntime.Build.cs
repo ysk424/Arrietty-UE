@@ -14,6 +14,7 @@ public class ArriettyRuntime : ModuleRules
             "Engine",
             "InputCore",
             "HeadMountedDisplay",
+            "Networking",
             "Sockets",
             "UMG"
         });

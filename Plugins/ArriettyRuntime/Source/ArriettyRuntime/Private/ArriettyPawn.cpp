@@ -4,6 +4,7 @@
 #include "ArriettyPawn.h"
 
 #include "ArriettyBluetoothManager.h"
+#include "ArriettyFanController.h"
 #include "ArriettyAlertWidget.h"
 #include "ArriettyInstrumentWidget.h"
 #include "ArriettyNavigationComponent.h"
@@ -147,6 +148,8 @@ void AArriettyPawn::BeginPlay()
     SerialController->Start();
     RideLog = MakeUnique<FArriettyRideLog>();
     VoiceBridge = MakeUnique<FArriettyVoiceBridgeClient>();
+    FanController = MakeUnique<FArriettyFanController>();
+    FanController->Start();
     InstrumentWidget = CreateWidget<UArriettyInstrumentWidget>(
         GetWorld(), UArriettyInstrumentWidget::StaticClass(), TEXT("ArriettyInstrumentWidget"));
     AlertWidget = CreateWidget<UArriettyAlertWidget>(
@@ -198,6 +201,10 @@ void AArriettyPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
     {
         SerialController->StopAndWait();
     }
+    if (FanController)
+    {
+        FanController->Stop();
+    }
     Super::EndPlay(EndPlayReason);
 }
 
@@ -217,6 +224,10 @@ void AArriettyPawn::Tick(float DeltaSeconds)
     UpdateSteering();
     MaybeBeginRiding();
     AdvanceRide(FMath::Min(DeltaSeconds, 0.25f));
+    if (FanController)
+    {
+        FanController->Tick(Snapshot.SpeedKmh, FPlatformTime::Seconds());
+    }
     UpdateInstrumentAnchor();
     UpdateInstrumentWidget();
     UpdateVrAlert();
@@ -249,6 +260,8 @@ void AArriettyPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
     PlayerInputComponent->BindKey(EKeys::Subtract, IE_Pressed, this, &AArriettyPawn::StepPresetDownInput);
     PlayerInputComponent->BindKey(EKeys::Decimal, IE_Pressed, this, &AArriettyPawn::RecenterHmdToBike);
     PlayerInputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AArriettyPawn::QuitApplication);
+    PlayerInputComponent->BindKey(EKeys::F9, IE_Pressed, this, &AArriettyPawn::CorrectFanLevelDown);
+    PlayerInputComponent->BindKey(EKeys::F10, IE_Pressed, this, &AArriettyPawn::CorrectFanLevelUp);
 }
 
 bool AArriettyPawn::IsRideActive() const
@@ -746,6 +759,24 @@ void AArriettyPawn::SelectPreset3Input() { SelectControlPreset(3); }
 void AArriettyPawn::SelectPreset4Input() { SelectControlPreset(4); }
 void AArriettyPawn::StepPresetUpInput() { StepControlPreset(1); }
 void AArriettyPawn::StepPresetDownInput() { StepControlPreset(-1); }
+
+void AArriettyPawn::CorrectFanLevelDown()
+{
+    if (FanController)
+    {
+        FanController->CorrectReportedLevel(-1);
+        ShowVrAlert(FString::Printf(TEXT("FAN SYNC LEVEL %d"), FanController->GetReportedLevel()), 1.5);
+    }
+}
+
+void AArriettyPawn::CorrectFanLevelUp()
+{
+    if (FanController)
+    {
+        FanController->CorrectReportedLevel(1);
+        ShowVrAlert(FString::Printf(TEXT("FAN SYNC LEVEL %d"), FanController->GetReportedLevel()), 1.5);
+    }
+}
 
 void AArriettyPawn::NavigateForward()
 {

@@ -7,6 +7,7 @@
 #include "ArriettyBluetoothManager.h"
 #include "ArriettyDigitalFlightControls.h"
 #include "ArriettyFlightTuningControls.h"
+#include "ArriettyFanController.h"
 #include "ArriettySerialController.h"
 #include "ArriettyRideLog.h"
 #include "ArriettyVoiceBridgeClient.h"
@@ -120,6 +121,8 @@ private:
     void SelectPreset4Input();
     void StepPresetUpInput();
     void StepPresetDownInput();
+    void CorrectFanLevelDown();
+    void CorrectFanLevelUp();
     void CalibrateEyeHeight();
     void ResetInstrumentAnchor();
     void UpdateInstrumentAnchor();
@@ -170,6 +173,7 @@ private:
     TUniquePtr<FArriettyBluetoothManager> Bluetooth;
     TUniquePtr<FArriettySerialController> SerialController;
     TUniquePtr<FArriettyRideLog> RideLog;
+    TUniquePtr<FArriettyFanController> FanController;
     TUniquePtr<FArriettyVoiceBridgeClient> VoiceBridge;
     FArriettyRideSnapshot Snapshot;
     FArriettyFlightState FlightState;
