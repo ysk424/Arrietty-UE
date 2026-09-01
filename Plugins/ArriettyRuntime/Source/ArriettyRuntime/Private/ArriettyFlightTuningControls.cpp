@@ -80,14 +80,10 @@ double FArriettyFlightTuningControls::GetCurrentValue() const
     {
     case EArriettyFlightTuningParameter::TestPropulsionPower:
         return Values.TestPropulsionPowerWatts;
-    case EArriettyFlightTuningParameter::AirspeedMultiplier:
-        return Values.AirspeedMultiplier;
     case EArriettyFlightTuningParameter::PositiveClimbMultiplier:
         return Values.PositiveClimbMultiplier;
     case EArriettyFlightTuningParameter::PitchResponseRate:
         return Values.PitchRateDegreesPerSecond;
-    case EArriettyFlightTuningParameter::ElevatorVerticalSpeed:
-        return Values.MaxElevatorVerticalSpeedMps;
     case EArriettyFlightTuningParameter::BankResponseRate:
         return Values.BankRateDegreesPerSecond;
     default:
@@ -101,14 +97,10 @@ FString FArriettyFlightTuningControls::GetParameterLabel() const
     {
     case EArriettyFlightTuningParameter::TestPropulsionPower:
         return TEXT("TEST PROP");
-    case EArriettyFlightTuningParameter::AirspeedMultiplier:
-        return TEXT("SPEED");
     case EArriettyFlightTuningParameter::PositiveClimbMultiplier:
-        return TEXT("CLIMB");
+        return TEXT("POWER BOOST");
     case EArriettyFlightTuningParameter::PitchResponseRate:
         return TEXT("PITCH RATE");
-    case EArriettyFlightTuningParameter::ElevatorVerticalSpeed:
-        return TEXT("PITCH V/S");
     case EArriettyFlightTuningParameter::BankResponseRate:
         return TEXT("ROLL RATE");
     default:
@@ -143,13 +135,6 @@ bool FArriettyFlightTuningControls::StepCurrentValue(int32 Direction)
             Arrietty::FlightMinTestPropulsionPowerWatts,
             Arrietty::FlightMaxTestPropulsionPowerWatts);
         break;
-    case EArriettyFlightTuningParameter::AirspeedMultiplier:
-        Values.AirspeedMultiplier = FMath::Clamp(
-            Values.AirspeedMultiplier +
-                Sign * Arrietty::FlightAirspeedMultiplierStep,
-            Arrietty::FlightMinAirspeedMultiplier,
-            Arrietty::FlightMaxAirspeedMultiplier);
-        break;
     case EArriettyFlightTuningParameter::PositiveClimbMultiplier:
         Values.PositiveClimbMultiplier = FMath::Clamp(
             Values.PositiveClimbMultiplier +
@@ -163,13 +148,6 @@ bool FArriettyFlightTuningControls::StepCurrentValue(int32 Direction)
                 Sign * Arrietty::FlightPitchRateStepDegreesPerSecond,
             Arrietty::FlightMinPitchRateDegreesPerSecond,
             Arrietty::FlightMaxPitchRateTuningDegreesPerSecond);
-        break;
-    case EArriettyFlightTuningParameter::ElevatorVerticalSpeed:
-        Values.MaxElevatorVerticalSpeedMps = FMath::Clamp(
-            Values.MaxElevatorVerticalSpeedMps +
-                Sign * Arrietty::FlightVerticalSpeedStepMps,
-            Arrietty::FlightMinElevatorVerticalSpeedMps,
-            Arrietty::FlightMaxElevatorVerticalSpeedTuningMps);
         break;
     case EArriettyFlightTuningParameter::BankResponseRate:
         Values.BankRateDegreesPerSecond = FMath::Clamp(
@@ -190,15 +168,11 @@ FString FArriettyFlightTuningControls::FormatCurrentValue() const
     {
     case EArriettyFlightTuningParameter::TestPropulsionPower:
         return FString::Printf(TEXT("%.0f W"), GetCurrentValue());
-    case EArriettyFlightTuningParameter::AirspeedMultiplier:
-        return FString::Printf(TEXT("x%.1f"), GetCurrentValue());
     case EArriettyFlightTuningParameter::PositiveClimbMultiplier:
         return FString::Printf(TEXT("x%.0f"), GetCurrentValue());
     case EArriettyFlightTuningParameter::PitchResponseRate:
     case EArriettyFlightTuningParameter::BankResponseRate:
         return FString::Printf(TEXT("%.0f DEG/S"), GetCurrentValue());
-    case EArriettyFlightTuningParameter::ElevatorVerticalSpeed:
-        return FString::Printf(TEXT("%.1f M/S"), GetCurrentValue());
     default:
         return FString();
     }

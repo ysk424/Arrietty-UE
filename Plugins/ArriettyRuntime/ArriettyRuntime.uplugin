@@ -1,7 +1,7 @@
 {
   "FileVersion": 3,
-  "Version": 1100,
-  "VersionName": "0.11.0",
+  "Version": 1300,
+  "VersionName": "0.13.0",
   "FriendlyName": "Arrietty Runtime",
   "Description": "Ride Unreal Engine Levels with OpenXR and a CYCPLUS T2 trainer.",
   "Category": "Virtual Reality",

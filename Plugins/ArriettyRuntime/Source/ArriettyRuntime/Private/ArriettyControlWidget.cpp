@@ -311,13 +311,12 @@ void UArriettyControlWidget::Refresh()
     FlightButtonLabel->SetText(FText::FromString(
         State.bFlightEnabled ? TEXT("Return to Ground (Numpad 7)") : TEXT("Enable Flight (Numpad 7)")));
     FlightStatusText->SetText(FText::FromString(FString::Printf(
-        TEXT("Mode: %s   %s   ALT AGL %.1f m   VS %+.2f m/s\nFlight speed %.1f km/h (x%.1f)   Bank %+.1f degrees   Pitch %+.1f degrees\nCommand: Roll Right %+.0f degrees   Pitch Up %+.0f degrees   %s   XY: %s\n%s   Positive climb x%.0f"),
+        TEXT("Mode: %s   %s   ALT AGL %.1f m   VS %+.2f m/s\nPhysical airspeed %.1f km/h   Bank %+.1f degrees   Pitch %+.1f degrees\nCommand: Roll Right %+.0f degrees   Pitch Up %+.0f degrees   %s   XY: %s\n%s   Positive power boost x%.0f"),
         State.bFlightEnabled ? TEXT("FLIGHT") : TEXT("GROUND"),
         State.bAircraftAirborne ? TEXT("AIRBORNE") : TEXT("ON GROUND"),
         State.AltitudeMeters,
         State.VerticalSpeedMetersPerSecond,
         State.SpeedKmh,
-        State.FlightAirspeedMultiplier,
         State.BankDegrees,
         State.PitchDegrees,
         State.CommandedRollRightDegrees,

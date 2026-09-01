@@ -227,6 +227,7 @@ private:
     double FtmsSpeedKmh = 0.0;
     double LastFtmsSampleSeconds = 0.0;
     double LastHeartRateSampleSeconds = 0.0;
+    double RideStartedAtSeconds = -1.0;
     bool bWheelSignalReceived = false;
     TOptional<uint32> WheelRevolutions;
     TOptional<uint16> WheelEventTimeTicks;

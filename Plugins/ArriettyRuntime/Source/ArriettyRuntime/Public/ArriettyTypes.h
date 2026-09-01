@@ -7,7 +7,7 @@
 
 namespace Arrietty
 {
-inline constexpr TCHAR Version[] = TEXT("0.11.0");
+inline constexpr TCHAR Version[] = TEXT("0.13.0");
 inline constexpr TCHAR SteeringControllerSerial[] = TEXT("LHR-9EFF8645");
 inline constexpr TCHAR RideSurfaceTag[] = TEXT("SecretWorldRideSurface");
 inline constexpr double EyeHeightMeters = 1.5;
@@ -32,6 +32,11 @@ inline constexpr double FlightPropellerEfficiency = 0.80;
 inline constexpr double FlightBestGlideSpeedKmh = 24.0;
 inline constexpr double FlightStallSpeedKmh = 18.0;
 inline constexpr double FlightStallRecoverySpeedKmh = 20.5;
+inline constexpr double FlightAirDensityKgPerCubicMeter = 1.225;
+inline constexpr double FlightWingAreaSquareMeters = 15.0;
+inline constexpr double FlightLiftCurveSlopePerDegree = 0.11;
+inline constexpr double FlightPostStallLiftFactor = 0.65;
+inline constexpr double FlightPostStallDragCoefficient = 0.12;
 inline constexpr double FlightMaxBankDegrees = 25.0;
 inline constexpr double FlightMaxPitchDegrees = 12.0;
 inline constexpr double FlightControlStepDegrees = 1.0;
@@ -40,11 +45,7 @@ inline constexpr double FlightBankRateDegreesPerSecond = 55.0;
 inline constexpr double FlightControlReferenceSpeedKmh = 24.0;
 inline constexpr double FlightMinControlAuthority = 0.20;
 inline constexpr double FlightMaxControlAuthority = 1.75;
-inline constexpr double FlightMaxElevatorVerticalSpeedMps = 1.5;
-inline constexpr double FlightStallSinkSpeedMps = 2.0;
-inline constexpr double FlightMaxBankTurnRateDegrees = 18.0;
 inline constexpr double FlightMaxRudderTurnRateDegrees = 10.0;
-inline constexpr double FlightControlDeadzone = 0.08;
 inline constexpr double FlightMaxPropellerThrustNewtons = 35.0;
 inline constexpr double FlightGroundRollingResistance = 0.012;
 inline constexpr double FlightOverspeedWarningKmh = 60.0;
@@ -60,16 +61,9 @@ inline constexpr double FlightMaxTestPropulsionPowerWatts = 300.0;
 inline constexpr double FlightPitchRateStepDegreesPerSecond = 2.0;
 inline constexpr double FlightMinPitchRateDegreesPerSecond = 4.0;
 inline constexpr double FlightMaxPitchRateTuningDegreesPerSecond = 60.0;
-inline constexpr double FlightVerticalSpeedStepMps = 0.1;
-inline constexpr double FlightMinElevatorVerticalSpeedMps = 0.3;
-inline constexpr double FlightMaxElevatorVerticalSpeedTuningMps = 3.0;
 inline constexpr double FlightBankRateStepDegreesPerSecond = 5.0;
 inline constexpr double FlightMinBankRateDegreesPerSecond = 5.0;
 inline constexpr double FlightMaxBankRateTuningDegreesPerSecond = 120.0;
-inline constexpr double FlightAirspeedMultiplier = 3.0;
-inline constexpr double FlightAirspeedMultiplierStep = 0.5;
-inline constexpr double FlightMinAirspeedMultiplier = 1.0;
-inline constexpr double FlightMaxAirspeedMultiplier = 6.0;
 inline constexpr double FlightPositiveClimbMultiplier = 10.0;
 inline constexpr double FlightPositiveClimbMultiplierStep = 1.0;
 inline constexpr double FlightMinPositiveClimbMultiplier = 1.0;
@@ -80,10 +74,8 @@ inline constexpr int32 VoiceBridgePort = 49000;
 enum class EArriettyFlightTuningParameter : uint8
 {
     TestPropulsionPower,
-    AirspeedMultiplier,
     PositiveClimbMultiplier,
     PitchResponseRate,
-    ElevatorVerticalSpeed,
     BankResponseRate,
     Count
 };
@@ -91,10 +83,8 @@ enum class EArriettyFlightTuningParameter : uint8
 struct FArriettyFlightTuningValues
 {
     double TestPropulsionPowerWatts = Arrietty::FlightTestPropulsionPowerWatts;
-    double AirspeedMultiplier = Arrietty::FlightAirspeedMultiplier;
     double PositiveClimbMultiplier = Arrietty::FlightPositiveClimbMultiplier;
     double PitchRateDegreesPerSecond = Arrietty::FlightPitchRateDegreesPerSecond;
-    double MaxElevatorVerticalSpeedMps = Arrietty::FlightMaxElevatorVerticalSpeedMps;
     double BankRateDegreesPerSecond = Arrietty::FlightBankRateDegreesPerSecond;
 };
 
@@ -178,16 +168,15 @@ struct FArriettyRideSnapshot
     bool bFlightTuningActive = false;
     FString FlightTuningStatus = TEXT("TUNE OFF - PRESS J1 SW");
     double FlightTestPropulsionPowerWatts = Arrietty::FlightTestPropulsionPowerWatts;
-    double FlightAirspeedMultiplier = Arrietty::FlightAirspeedMultiplier;
     double FlightPositiveClimbMultiplier = Arrietty::FlightPositiveClimbMultiplier;
     double FlightPitchRateDegreesPerSecond = Arrietty::FlightPitchRateDegreesPerSecond;
-    double FlightMaxElevatorVerticalSpeedMps = Arrietty::FlightMaxElevatorVerticalSpeedMps;
     double FlightBankRateDegreesPerSecond = Arrietty::FlightBankRateDegreesPerSecond;
     bool bPushToTalkHeld = false;
     FString VoiceStatus = TEXT("PTT READY");
     bool bBrakeButtonHeld = false;
     double AppliedGradePercent = 0.0;
     double DistanceMeters = 0.0;
+    double ElapsedSeconds = 0.0;
     double AltitudeMeters = 0.0;
     double VerticalSpeedMetersPerSecond = 0.0;
     double BankDegrees = 0.0;

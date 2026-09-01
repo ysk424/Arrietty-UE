@@ -157,7 +157,10 @@ void FArriettyBluetoothManager::WorkerMain(
     {
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
         bApartmentInitialized = true;
-        QueueStatus(WorkerGeneration, EArriettyRideStatus::Searching, TEXT("Searching for CYCPLUS T2"));
+        QueueStatus(
+            WorkerGeneration,
+            EArriettyRideStatus::Searching,
+            TEXT("Searching for CYCPLUS T2 and BLE heart-rate sensor"));
 
         std::mutex ScanMutex;
         std::condition_variable ScanCondition;
@@ -212,11 +215,14 @@ void FArriettyBluetoothManager::WorkerMain(
                 }
                 ScanCondition.wait_for(Lock, std::chrono::milliseconds(100));
             }
+            // Garmin watches can advertise the standard Heart Rate service less
+            // frequently than the trainer. Keep the active scan open long enough
+            // to receive a complete advertising cycle after the T2 is found.
             if (DeviceAddress != 0 && HeartRateDeviceAddress == 0 && !bStopRequested.Load())
             {
                 ScanCondition.wait_for(
                     Lock,
-                    std::chrono::seconds(3),
+                    std::chrono::seconds(10),
                     [&] { return HeartRateDeviceAddress != 0 || bStopRequested.Load(); });
             }
         }
@@ -508,7 +514,7 @@ void FArriettyBluetoothManager::WorkerMain(
             FArriettyBluetoothEvent Event;
             Event.Generation = WorkerGeneration;
             Event.Type = EArriettyBluetoothEventType::HeartRateUnavailable;
-            Event.Message = TEXT("NOT FOUND: start a standard BLE heart-rate sensor before Numpad 0");
+            Event.Message = TEXT("NOT FOUND: enable Garmin Broadcast Heart Rate (BLE), then restart the ride");
             QueueEvent(MoveTemp(Event));
         }
 

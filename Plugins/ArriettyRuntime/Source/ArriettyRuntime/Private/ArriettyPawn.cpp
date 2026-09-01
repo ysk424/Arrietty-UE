@@ -211,12 +211,17 @@ void AArriettyPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void AArriettyPawn::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    const double NowSeconds = FPlatformTime::Seconds();
+    if (RideStartedAtSeconds >= 0.0)
+    {
+        Snapshot.ElapsedSeconds = FMath::Max(0.0, NowSeconds - RideStartedAtSeconds);
+    }
     PumpControllerEvents();
     PumpVoiceBridgeEvents();
-    FlushPendingFlightButton(FPlatformTime::Seconds());
+    FlushPendingFlightButton(NowSeconds);
     PumpBluetoothEvents();
     if (Snapshot.HeartRateBpm.IsSet() &&
-        FPlatformTime::Seconds() - LastHeartRateSampleSeconds > Arrietty::HeartRateStaleSeconds)
+        NowSeconds - LastHeartRateSampleSeconds > Arrietty::HeartRateStaleSeconds)
     {
         Snapshot.HeartRateBpm.Reset();
         Snapshot.HeartRateStatus = TEXT("STALE");
@@ -226,7 +231,7 @@ void AArriettyPawn::Tick(float DeltaSeconds)
     AdvanceRide(FMath::Min(DeltaSeconds, 0.25f));
     if (FanController)
     {
-        FanController->Tick(Snapshot.SpeedKmh, FPlatformTime::Seconds());
+        FanController->Tick(Snapshot.SpeedKmh, NowSeconds);
     }
     UpdateInstrumentAnchor();
     UpdateInstrumentWidget();
@@ -591,6 +596,9 @@ void AArriettyPawn::StartRide()
         return;
     }
 
+    RideStartedAtSeconds = FPlatformTime::Seconds();
+    Snapshot.ElapsedSeconds = 0.0;
+
     Snapshot.Status = EArriettyRideStatus::Searching;
     Snapshot.Message = TEXT("Searching for CYCPLUS T2");
     Snapshot.ControlStatus = FString::Printf(TEXT("REQUESTING P%d"), Snapshot.SelectedPreset);
@@ -632,6 +640,12 @@ void AArriettyPawn::StartRide()
 
 void AArriettyPawn::StopRide(const TCHAR* LogEvent)
 {
+    if (RideStartedAtSeconds >= 0.0)
+    {
+        Snapshot.ElapsedSeconds = FMath::Max(
+            0.0, FPlatformTime::Seconds() - RideStartedAtSeconds);
+        RideStartedAtSeconds = -1.0;
+    }
     if (Bluetooth)
     {
         Bluetooth->RequestStop();
@@ -1154,10 +1168,8 @@ void AArriettyPawn::SyncFlightTuningSnapshot()
     Snapshot.bFlightTuningActive = FlightTuningControls.IsActive();
     Snapshot.FlightTuningStatus = FlightTuningControls.GetCompactStatus();
     Snapshot.FlightTestPropulsionPowerWatts = Values.TestPropulsionPowerWatts;
-    Snapshot.FlightAirspeedMultiplier = Values.AirspeedMultiplier;
     Snapshot.FlightPositiveClimbMultiplier = Values.PositiveClimbMultiplier;
     Snapshot.FlightPitchRateDegreesPerSecond = Values.PitchRateDegreesPerSecond;
-    Snapshot.FlightMaxElevatorVerticalSpeedMps = Values.MaxElevatorVerticalSpeedMps;
     Snapshot.FlightBankRateDegreesPerSecond = Values.BankRateDegreesPerSecond;
 }
 
@@ -1656,8 +1668,8 @@ void AArriettyPawn::AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeco
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
             FlightState,
             PropulsionPowerWatts,
-            DigitalFlightControls.GetElevatorInput(),
-            DigitalFlightControls.GetAileronInput(),
+            DigitalFlightControls.GetPitchDegrees(),
+            DigitalFlightControls.GetBankDegrees(),
             Snapshot.EffectiveSteeringDegrees,
             DeltaSeconds,
             bCanLand,
@@ -1703,8 +1715,7 @@ void AArriettyPawn::AdvanceHumanPoweredFlight(float DeltaSeconds, double NowSeco
     const double HorizontalSpeed = FMath::Sqrt(FMath::Max(
         0.0,
         FMath::Square(FlightState.AirspeedMetersPerSecond) -
-            FMath::Square(FlightState.VerticalSpeedMetersPerSecond))) *
-        FMath::Max(1.0, Tuning.AirspeedMultiplier);
+            FMath::Square(FlightState.VerticalSpeedMetersPerSecond)));
     const double AdvanceMeters = HorizontalSpeed * Delta;
     const FVector2D NextPosition = Snapshot.PositionMeters + FVector2D(
         FMath::Cos(MidpointHeading),
@@ -1745,9 +1756,7 @@ void AArriettyPawn::ResetHumanPoweredFlight(double InitialAirspeedKmh)
 
 void AArriettyPawn::SyncHumanPoweredFlightSnapshot()
 {
-    const FArriettyFlightTuningValues& Tuning = FlightTuningControls.GetValues();
-    Snapshot.SpeedKmh = FlightState.AirspeedMetersPerSecond * 3.6 *
-        FMath::Max(1.0, Tuning.AirspeedMultiplier);
+    Snapshot.SpeedKmh = FlightState.AirspeedMetersPerSecond * 3.6;
     Snapshot.AltitudeMeters = FlightState.AltitudeMeters;
     Snapshot.VerticalSpeedMetersPerSecond = FlightState.VerticalSpeedMetersPerSecond;
     Snapshot.BankDegrees = FlightState.BankDegrees;

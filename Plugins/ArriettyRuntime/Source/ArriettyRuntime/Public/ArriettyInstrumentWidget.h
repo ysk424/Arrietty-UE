@@ -40,6 +40,7 @@ class ARRIETTYRUNTIME_API UArriettyInstrumentWidget : public UUserWidget
 
 public:
     void SetRideSnapshot(const FArriettyRideSnapshot& Snapshot);
+    static FString FormatElapsedTime(double ElapsedSeconds);
 
 protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;

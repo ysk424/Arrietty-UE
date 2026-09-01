@@ -15,6 +15,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FArriettyNativeWidgetContentTest::RunTest(const FString& Parameters)
 {
+    TestEqual(TEXT("Elapsed time starts at zero"),
+        UArriettyInstrumentWidget::FormatElapsedTime(0.0), FString(TEXT("T+00:00:00")));
+    TestEqual(TEXT("Elapsed time includes hours"),
+        UArriettyInstrumentWidget::FormatElapsedTime(3723.9), FString(TEXT("T+01:02:03")));
+    TestEqual(TEXT("Elapsed time is not limited to 24 hours"),
+        UArriettyInstrumentWidget::FormatElapsedTime(90061.0), FString(TEXT("T+25:01:01")));
+
     UArriettyInstrumentWidget* Instrument = NewObject<UArriettyInstrumentWidget>();
     TestNotNull(TEXT("Instrument widget is created"), Instrument);
     TSharedRef<SWidget> InstrumentSlate = Instrument->TakeWidget();

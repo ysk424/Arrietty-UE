@@ -65,17 +65,6 @@ FArriettyDigitalFlightControlChange FArriettyDigitalFlightControls::StepRollRigh
     return {false, !FMath::IsNearlyEqual(Previous, RollRightDegrees), false};
 }
 
-double FArriettyDigitalFlightControls::GetElevatorInput() const
-{
-    return PitchDegrees / Arrietty::FlightMaxPitchDegrees;
-}
-
-double FArriettyDigitalFlightControls::GetAileronInput() const
-{
-    // The existing flight model uses positive aileron for left-wing-down.
-    return -RollRightDegrees / Arrietty::FlightMaxBankDegrees;
-}
-
 int32 FArriettyDigitalFlightControls::ConsumeGesture(double Value, bool& bArmed)
 {
     if (!bArmed)

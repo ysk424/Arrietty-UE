@@ -13,7 +13,6 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "HAL/PlatformTime.h"
-#include "Misc/DateTime.h"
 #include "Rendering/DrawElements.h"
 #include "Widgets/SLeafWidget.h"
 
@@ -219,7 +218,7 @@ TSharedRef<SWidget> UArriettyInstrumentWidget::RebuildWidget()
     UTextBlock* Title = MakeInstrumentText(
         WidgetTree, Header, TEXT("ARRIETTY // WINGS OVER THE EARTH"), 20, InstrumentGreen);
     ClockText = MakeInstrumentText(
-        WidgetTree, Header, TEXT("00:00:00"), 20, InstrumentOrange, ETextJustify::Right);
+        WidgetTree, Header, TEXT("T+00:00:00"), 20, InstrumentOrange, ETextJustify::Right);
     if (UHorizontalBoxSlot* TitleSlot = Cast<UHorizontalBoxSlot>(Title->Slot))
     {
         TitleSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
@@ -333,11 +332,9 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
     FLinearColor SpeedCueColor = InstrumentOrange;
     if (Snapshot.bFlightEnabled)
     {
-        const double AirspeedMultiplier = FMath::Max(1.0, Snapshot.FlightAirspeedMultiplier);
-        const double DisplayTakeoffSpeed = Arrietty::TakeoffSpeedKmh * AirspeedMultiplier;
-        const double DisplayStallSpeed = Arrietty::FlightStallSpeedKmh * AirspeedMultiplier;
-        const double DisplayRecoverySpeed =
-            Arrietty::FlightStallRecoverySpeedKmh * AirspeedMultiplier;
+        const double DisplayTakeoffSpeed = Arrietty::TakeoffSpeedKmh;
+        const double DisplayStallSpeed = Arrietty::FlightStallSpeedKmh;
+        const double DisplayRecoverySpeed = Arrietty::FlightStallRecoverySpeedKmh;
         if (!Snapshot.bAircraftAirborne)
         {
             SpeedCue = Snapshot.SpeedKmh >= DisplayTakeoffSpeed
@@ -427,7 +424,7 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
         HeartRateBar->SetPercent(0.0f);
     }
 
-    ClockText->SetText(FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S"))));
+    ClockText->SetText(FText::FromString(FormatElapsedTime(Snapshot.ElapsedSeconds)));
     const FString Position = Snapshot.bGeospatialNavigation
         ? FString::Printf(
             TEXT("LON %.6f  LAT %.6f  ELLIP H %.1f m"),
@@ -446,4 +443,17 @@ void UArriettyInstrumentWidget::SetRideSnapshot(const FArriettyRideSnapshot& Sna
         Snapshot.Message.StartsWith(TEXT("Ride paused;"));
     StatusText->SetColorAndOpacity(FSlateColor(
         bStatusWarning ? InstrumentRed : InstrumentOrange));
+}
+
+FString UArriettyInstrumentWidget::FormatElapsedTime(double ElapsedSeconds)
+{
+    const int64 TotalSeconds = static_cast<int64>(FMath::Max(0.0, ElapsedSeconds));
+    const int64 Hours = TotalSeconds / 3600;
+    const int64 Minutes = (TotalSeconds / 60) % 60;
+    const int64 Seconds = TotalSeconds % 60;
+    return FString::Printf(
+        TEXT("T+%02lld:%02lld:%02lld"),
+        static_cast<long long>(Hours),
+        static_cast<long long>(Minutes),
+        static_cast<long long>(Seconds));
 }

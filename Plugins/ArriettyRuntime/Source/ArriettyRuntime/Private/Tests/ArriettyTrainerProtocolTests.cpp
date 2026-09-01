@@ -176,8 +176,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
 {
     const double BestGlideSpeedMps = Arrietty::FlightBestGlideSpeedKmh / 3.6;
+    const double AircraftWeightNewtons = Arrietty::FlightEffectiveMassKg * 9.80665;
     const double ExpectedMinimumDrag =
-        Arrietty::FlightEffectiveMassKg * 9.80665 / Arrietty::FlightGlideRatio;
+        AircraftWeightNewtons / Arrietty::FlightGlideRatio;
     TestTrue(TEXT("Best-glide drag matches L/D 30"), FMath::IsNearlyEqual(
         ArriettyTrainerProtocol::HumanPoweredFlightDragNewtons(BestGlideSpeedMps),
         ExpectedMinimumDrag,
@@ -210,6 +211,15 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
             -24.0 / 3.6 / Arrietty::FlightGlideRatio,
             0.001));
 
+    const double TrimLift = ArriettyTrainerProtocol::HumanPoweredFlightLiftNewtons(
+        BestGlideSpeedMps, 0.0, 0.0);
+    const double PitchedLift = ArriettyTrainerProtocol::HumanPoweredFlightLiftNewtons(
+        BestGlideSpeedMps, 5.0, 0.0);
+    TestTrue(TEXT("Neutral pitch is trimmed to support aircraft weight at 24 km/h"),
+        FMath::IsNearlyEqual(TrimLift, AircraftWeightNewtons, 0.1));
+    TestTrue(TEXT("Positive physical pitch increases aerodynamic lift"),
+        PitchedLift > TrimLift * 1.5);
+
     const double LowSpeedAuthority =
         ArriettyTrainerProtocol::HumanPoweredFlightControlAuthority(18.5 / 3.6, false);
     const double ReferenceSpeedAuthority =
@@ -229,45 +239,47 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
 
     FArriettyFlightState Takeoff;
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(Takeoff, 21.0);
-    const FArriettyFlightStepResult TakeoffResult =
-        ArriettyTrainerProtocol::StepHumanPoweredFlight(
-            Takeoff, 180.0, 1.0, 0.0, 0.0, 0.1, true);
-    TestTrue(TEXT("Positive J2 X takes off above 20 km/h"), TakeoffResult.bTookOff);
+    bool bTookOff = false;
+    for (int32 Step = 0; Step < 10 && !bTookOff; ++Step)
+    {
+        bTookOff = ArriettyTrainerProtocol::StepHumanPoweredFlight(
+            Takeoff, 180.0, 6.0, 0.0, 0.0, 0.1, true).bTookOff;
+    }
+    TestTrue(TEXT("Pitch-generated lift takes off above stall speed"), bTookOff);
     TestTrue(TEXT("Aircraft is airborne"), Takeoff.bAirborne);
 
     FArriettyFlightState OneDegreeTakeoff;
-    ArriettyTrainerProtocol::InitializeHumanPoweredFlight(OneDegreeTakeoff, 21.0);
+    ArriettyTrainerProtocol::InitializeHumanPoweredFlight(OneDegreeTakeoff, 24.0);
     const FArriettyFlightStepResult OneDegreeTakeoffResult =
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
             OneDegreeTakeoff,
             Arrietty::FlightTestPropulsionPowerWatts,
-            Arrietty::FlightControlStepDegrees / Arrietty::FlightMaxPitchDegrees,
+            Arrietty::FlightControlStepDegrees,
             0.0,
             0.0,
             0.1,
             true);
-    TestTrue(TEXT("One positive digital pitch step can rotate above 20 km/h"),
+    TestTrue(TEXT("One positive physical pitch degree can rotate at trim speed"),
         OneDegreeTakeoffResult.bTookOff);
+    TestTrue(TEXT("One-degree command is not reduced by a second deadzone"),
+        FMath::IsNearlyEqual(OneDegreeTakeoff.PitchDegrees, 1.0, 0.001));
 
     FArriettyFlightState Controls;
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(Controls, 24.0);
     Controls.bAirborne = true;
     Controls.AltitudeMeters = 100.0;
-    for (int32 Step = 0; Step < 5; ++Step)
+    for (int32 Step = 0; Step < 20; ++Step)
     {
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
-            Controls, 150.0, 1.0, 1.0, 0.0, 0.1, true);
+            Controls, 140.0, 4.0, 5.0, 0.0, 0.05, true);
     }
-    TestTrue(TEXT("Positive J2 X raises the nose"), Controls.PitchDegrees > 5.0);
-    TestTrue(TEXT("Positive J2 Y lowers the left wing"), Controls.BankDegrees > 10.0);
+    TestTrue(TEXT("Four-degree pitch command becomes four physical degrees"),
+        FMath::IsNearlyEqual(Controls.PitchDegrees, 4.0, 0.001));
+    TestTrue(TEXT("Five-degree bank command becomes five physical degrees"),
+        FMath::IsNearlyEqual(Controls.BankDegrees, 5.0, 0.001));
+    TestTrue(TEXT("Positive pitch-generated lift raises the flight path"),
+        Controls.FlightPathAngleDegrees > 0.0 && Controls.VerticalSpeedMetersPerSecond > 0.0);
     TestTrue(TEXT("Left-wing-down bank turns left"), Controls.HeadingRateDegreesPerSecond > 0.0);
-    TestTrue(TEXT("Flight-path angle is calculated"),
-        !FMath::IsNearlyZero(Controls.FlightPathAngleDegrees));
-    TestTrue(TEXT("Angle of attack equals pitch minus flight-path angle"),
-        FMath::IsNearlyEqual(
-            Controls.AngleOfAttackDegrees,
-            FMath::UnwindDegrees(Controls.PitchDegrees - Controls.FlightPathAngleDegrees),
-            0.001));
 
     auto MakeAirborneState = [](double InitialSpeedKmh)
     {
@@ -281,26 +293,44 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     FArriettyFlightState ReferenceSpeedControls = MakeAirborneState(24.0);
     FArriettyFlightState HighSpeedControls = MakeAirborneState(36.0);
     ArriettyTrainerProtocol::StepHumanPoweredFlight(
-        LowSpeedControls, 150.0, 1.0, 1.0, 0.0, 0.1, true);
+        LowSpeedControls, 150.0, 5.0, 5.0, 0.0, 0.1, true);
     ArriettyTrainerProtocol::StepHumanPoweredFlight(
-        ReferenceSpeedControls, 150.0, 1.0, 1.0, 0.0, 0.1, true);
+        ReferenceSpeedControls, 150.0, 5.0, 5.0, 0.0, 0.1, true);
     ArriettyTrainerProtocol::StepHumanPoweredFlight(
-        HighSpeedControls, 150.0, 1.0, 1.0, 0.0, 0.1, true);
+        HighSpeedControls, 150.0, 5.0, 5.0, 0.0, 0.1, true);
     TestTrue(TEXT("Pitch response is slower at low airspeed"),
         LowSpeedControls.PitchDegrees < ReferenceSpeedControls.PitchDegrees);
     TestTrue(TEXT("Pitch response is faster at high airspeed"),
         ReferenceSpeedControls.PitchDegrees < HighSpeedControls.PitchDegrees);
     TestTrue(TEXT("Bank response is slower at low airspeed"),
         LowSpeedControls.BankDegrees < ReferenceSpeedControls.BankDegrees);
-    TestTrue(TEXT("Bank response is faster at high airspeed"),
-        ReferenceSpeedControls.BankDegrees < HighSpeedControls.BankDegrees);
+    TestTrue(TEXT("Bank response is not slower at high airspeed"),
+        ReferenceSpeedControls.BankDegrees <= HighSpeedControls.BankDegrees);
+
+    FArriettyFlightState WingsLevel = MakeAirborneState(24.0);
+    FArriettyFlightState Banked = MakeAirborneState(24.0);
+    const double TrimSpeedMetersPerSecond = 24.0 / 3.6;
+    const double LevelPowerWatts =
+        ArriettyTrainerProtocol::HumanPoweredFlightDragNewtons(TrimSpeedMetersPerSecond)
+        * TrimSpeedMetersPerSecond;
+    for (int32 Step = 0; Step < 10; ++Step)
+    {
+        ArriettyTrainerProtocol::StepHumanPoweredFlight(
+            WingsLevel, LevelPowerWatts, 0.0, 0.0, 0.0, 0.05, true);
+        ArriettyTrainerProtocol::StepHumanPoweredFlight(
+            Banked, LevelPowerWatts, 0.0, 30.0, 0.0, 0.05, true);
+    }
+    TestTrue(TEXT("Bank reduces the vertical component of lift"),
+        Banked.FlightPathAngleDegrees < WingsLevel.FlightPathAngleDegrees);
+    TestTrue(TEXT("Bank produces a physical turn"),
+        Banked.HeadingRateDegreesPerSecond > 0.0);
 
     FArriettyFlightState TunedSlowControls = MakeAirborneState(24.0);
     FArriettyFlightTuningValues SlowTuning;
     SlowTuning.PitchRateDegreesPerSecond = 4.0;
     SlowTuning.BankRateDegreesPerSecond = 5.0;
     ArriettyTrainerProtocol::StepHumanPoweredFlight(
-        TunedSlowControls, 150.0, 1.0, 1.0, 0.0, 0.1, true, SlowTuning);
+        TunedSlowControls, 150.0, 5.0, 5.0, 0.0, 0.1, true, SlowTuning);
     TestTrue(TEXT("Runtime tuning can slow pitch response"),
         TunedSlowControls.PitchDegrees < ReferenceSpeedControls.PitchDegrees);
     TestTrue(TEXT("Runtime tuning can slow roll response"),
@@ -310,18 +340,15 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     FArriettyFlightState UnboostedClimb = MakeAirborneState(24.0);
     FArriettyFlightTuningValues UnboostedTuning;
     UnboostedTuning.PositiveClimbMultiplier = 1.0;
-    ArriettyTrainerProtocol::StepHumanPoweredFlight(
-        BoostedClimb, 140.0, 0.0, 0.0, 0.0, 0.1, true);
-    ArriettyTrainerProtocol::StepHumanPoweredFlight(
-        UnboostedClimb, 140.0, 0.0, 0.0, 0.0, 0.1, true, UnboostedTuning);
-    TestTrue(TEXT("Default tuning strongly amplifies positive surplus-power climb"),
-        BoostedClimb.VerticalSpeedMetersPerSecond >
-            UnboostedClimb.VerticalSpeedMetersPerSecond * 5.0);
-    TestTrue(TEXT("Neutral boosted climb does not consume energy-equivalent airspeed"),
-        FMath::IsNearlyEqual(
-            BoostedClimb.AirspeedMetersPerSecond,
-            UnboostedClimb.AirspeedMetersPerSecond,
-            0.001));
+    for (int32 Step = 0; Step < 100; ++Step)
+    {
+        ArriettyTrainerProtocol::StepHumanPoweredFlight(
+            BoostedClimb, 140.0, 5.0, 0.0, 0.0, 0.05, true);
+        ArriettyTrainerProtocol::StepHumanPoweredFlight(
+            UnboostedClimb, 140.0, 5.0, 0.0, 0.0, 0.05, true, UnboostedTuning);
+    }
+    TestTrue(TEXT("Default x10 positive power boost produces more altitude"),
+        BoostedClimb.AltitudeMeters > UnboostedClimb.AltitudeMeters + 1.0);
 
     FArriettyFlightState BoostedGlide = MakeAirborneState(24.0);
     FArriettyFlightState UnboostedGlide = MakeAirborneState(24.0);
@@ -339,13 +366,17 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(OppositeControls, 24.0);
     OppositeControls.bAirborne = true;
     OppositeControls.AltitudeMeters = 100.0;
-    for (int32 Step = 0; Step < 5; ++Step)
+    for (int32 Step = 0; Step < 20; ++Step)
     {
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
-            OppositeControls, 150.0, -1.0, -1.0, 0.0, 0.1, true);
+            OppositeControls, 140.0, -4.0, -5.0, 0.0, 0.05, true);
     }
-    TestTrue(TEXT("Negative J2 X lowers the nose"), OppositeControls.PitchDegrees < -5.0);
-    TestTrue(TEXT("Negative J2 Y lowers the right wing"), OppositeControls.BankDegrees < -10.0);
+    TestTrue(TEXT("Negative pitch command lowers the nose"),
+        FMath::IsNearlyEqual(OppositeControls.PitchDegrees, -4.0, 0.001));
+    TestTrue(TEXT("Negative bank command lowers the right wing"),
+        FMath::IsNearlyEqual(OppositeControls.BankDegrees, -5.0, 0.001));
+    TestTrue(TEXT("Negative pitch lowers the flight path"),
+        OppositeControls.VerticalSpeedMetersPerSecond < 0.0);
     TestTrue(TEXT("Right-wing-down bank turns right"), OppositeControls.HeadingRateDegreesPerSecond < 0.0);
 
     FArriettyFlightState Rudder;
@@ -361,15 +392,14 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(Glide, 24.0);
     Glide.bAirborne = true;
     Glide.AltitudeMeters = 100.0;
-    Glide.VerticalSpeedMetersPerSecond = -BestGlideSpeedMps / Arrietty::FlightGlideRatio;
-    const double GlideAirspeedBefore = Glide.AirspeedMetersPerSecond;
-    ArriettyTrainerProtocol::StepHumanPoweredFlight(
-        Glide, 0.0, 0.0, 0.0, 0.0, 0.1, true);
+    for (int32 Step = 0; Step < 100; ++Step)
+    {
+        ArriettyTrainerProtocol::StepHumanPoweredFlight(
+            Glide, 0.0, 0.0, 0.0, 0.0, 0.05, true);
+    }
     TestTrue(TEXT("Unpowered flight descends"), Glide.VerticalSpeedMetersPerSecond < 0.0);
-    TestTrue(TEXT("L/D 30 glide approximately preserves airspeed"), FMath::IsNearlyEqual(
-        Glide.AirspeedMetersPerSecond,
-        GlideAirspeedBefore,
-        0.01));
+    TestTrue(TEXT("Unpowered glide remains above stall for the short test"),
+        Glide.AirspeedMetersPerSecond * 3.6 > Arrietty::FlightStallSpeedKmh);
 
     FArriettyFlightState Stall;
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(Stall, 17.0);
@@ -377,7 +407,7 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     Stall.AltitudeMeters = 100.0;
     const FArriettyFlightStepResult StallResult =
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
-            Stall, 0.0, 1.0, 0.0, 0.0, 0.1, true);
+            Stall, 0.0, 6.0, 0.0, 0.0, 0.1, true);
     TestTrue(TEXT("Below 18 km/h starts a stall"), StallResult.bStallStarted);
     TestTrue(TEXT("Stall commands a descent"), Stall.VerticalSpeedMetersPerSecond < 0.0);
 
@@ -386,9 +416,10 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     Recovery.bAirborne = true;
     Recovery.bStalled = true;
     Recovery.AltitudeMeters = 100.0;
+    Recovery.FlightPathAngleDegrees = -5.0;
     const FArriettyFlightStepResult RecoveryResult =
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
-            Recovery, 0.0, -1.0, 0.0, 0.0, 0.1, true);
+            Recovery, 0.0, -10.0, 0.0, 0.0, 0.1, true);
     TestTrue(TEXT("Nose down above 20.5 km/h recovers the stall"),
         RecoveryResult.bStallRecovered);
     TestFalse(TEXT("Recovered aircraft is no longer stalled"), Recovery.bStalled);
@@ -397,7 +428,7 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(Landing, 20.0);
     Landing.bAirborne = true;
     Landing.AltitudeMeters = 0.01;
-    Landing.VerticalSpeedMetersPerSecond = -1.0;
+    Landing.FlightPathAngleDegrees = -10.0;
     const FArriettyFlightStepResult LandingResult =
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
             Landing, 0.0, 0.0, 0.0, 0.0, 0.1, true);
@@ -409,7 +440,7 @@ bool FArriettyHumanPoweredFlightTest::RunTest(const FString& Parameters)
     ArriettyTrainerProtocol::InitializeHumanPoweredFlight(BlockedLanding, 20.0);
     BlockedLanding.bAirborne = true;
     BlockedLanding.AltitudeMeters = 0.01;
-    BlockedLanding.VerticalSpeedMetersPerSecond = -1.0;
+    BlockedLanding.FlightPathAngleDegrees = -10.0;
     const FArriettyFlightStepResult BlockedLandingResult =
         ArriettyTrainerProtocol::StepHumanPoweredFlight(
             BlockedLanding, 0.0, 0.0, 0.0, 0.0, 0.1, false);

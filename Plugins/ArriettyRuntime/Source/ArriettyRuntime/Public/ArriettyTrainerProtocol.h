@@ -28,6 +28,11 @@ double EffectiveSpeedKmh(
     double WheelPeriodSeconds);
 void InitializeHumanPoweredFlight(FArriettyFlightState& State, double InitialAirspeedKmh = 0.0);
 double HumanPoweredFlightDragNewtons(double AirspeedMetersPerSecond);
+double HumanPoweredFlightLiftNewtons(
+    double AirspeedMetersPerSecond,
+    double PitchDegrees,
+    double FlightPathAngleDegrees,
+    bool bStalled = false);
 double HumanPoweredLevelFlightPowerWatts(double AirspeedKmh);
 double HumanPoweredFlightPowerClimbRateMetersPerSecond(
     double PropulsionPowerWatts,
@@ -38,8 +43,8 @@ double HumanPoweredFlightPropulsionPowerWatts(double RiderPowerWatts);
 FArriettyFlightStepResult StepHumanPoweredFlight(
     FArriettyFlightState& State,
     double RiderPowerWatts,
-    double ElevatorInput,
-    double AileronInput,
+    double TargetPitchDegrees,
+    double TargetBankDegrees,
     double RudderDegrees,
     double DeltaSeconds,
     bool bCanLand,

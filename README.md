@@ -1,6 +1,6 @@
 # Arrietty
 
-Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定したVIVEコントローラーを使い、Unreal EngineのLevel内を走行・人力飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.11.0です。
+Arrietty は、SteamVR/OpenXR HMD、CYCPLUS T2、ステムに固定したVIVEコントローラーを使い、Unreal EngineのLevel内を走行・人力飛行するWindows向けVRアプリです。従来のBlender Extension版v0.7.9をUnreal Engine 5.8.2のC++へ移植し、機能と操作を維持しながら60 FPSを目標にした描画構成へ変更しています。現在のArrietty UE版はv0.13.0です。
 
 ## 確認済み開発環境
 
@@ -53,7 +53,7 @@ pwsh -File .\Tools\Update-ArriettyWorldProject.ps1 `
 ## 操作
 
 1. SteamVRを起動し、SteamVRをアクティブなOpenXRランタイムにします。UE Editorでは走行するLevelを開き、Playメニューから`VR Preview`を選びます。
-2. HMDとステム上のVIVEコントローラーを接続します。SteamVRが左／右のどちらに割り当ててもArriettyが追跡中の側を自動選択します。心拍計を使う場合は、標準BLE Heart Rate Service対応センサーも装着して広告状態にします。
+2. HMDとステム上のVIVEコントローラーを接続します。SteamVRが左／右のどちらに割り当ててもArriettyが追跡中の側を自動選択します。Garminを使う場合は、時計の`心拍転送／Broadcast Heart Rate`をBLEで開始してから走行を開始します。
 3. Arriettyを起動するとOpenXR VRが自動的に開始します。開始しない場合は、画面のVR状態を確認して`Dive into Secret World`を押します。
 4. テンキー`4`/`6`で開始方向、`8`/`2`で開始位置を合わせます。
 5. T2を数回漕いで起こします。
@@ -78,22 +78,23 @@ PTTを使う日は、Codexが動作しているWSL/tmuxペインから最初に`
 ## 維持した機能
 
 - T2のFTMS Indoor Bike Data通知による速度・ケイデンス・パワー
-- 標準BLE Heart Rate Service `0x180D`／Heart Rate Measurement `0x2A37`による心拍数。見つからない場合もT2走行は継続
+- Garminを含む標準BLE Heart Rate Service `0x180D`／Heart Rate Measurement `0x2A37`による心拍数。T2検出後も10秒間探索し、見つからない場合もT2走行は継続
+- ESP32-IR（`192.168.4.1:4210`）へ走行速度に応じた`LEVEL 0..6`をUDP送信し、0〜30 km/hで風量を自動調整
 - FTMS Control Pointの制御権取得、通常勾配0%／Button 6押下中3%、風速0、Cw 0.51 kg/m、P1〜P7のCrr
 - CSC実円盤停止判定、ケイデンス0かつ5 km/h以下の惰性停止
 - SteamVRが左右どちらに割り当てても追跡中のOpenXRグリップを自動選択し、その最初の姿勢を操舵中央として校正
 - Button 1／テンキー0では描画前Late Updateの影響を受けるCamera Component値ではなく、OpenXRの有効な最新HMD姿勢を取得して視界を走行方向へ絶対Yawで整列。姿勢未取得時は最大1秒再試行
 - ホイールベース1.05 m、ゲイン50%、デッドゾーン1.5°、上限±15°
-- 実測パワーを推進力へ変換する有効質量35 kg、滑空比30、プロペラ効率80%の人力飛行モデル
+- 実測パワーを推進力へ変換する有効質量35 kg、翼面積15 m2、滑空比30、プロペラ効率80%の人力飛行モデル。ピッチと飛行経路角から迎角・揚力・誘導抗力を計算し、ロール時は揚力の鉛直／旋回成分を分ける
 - 最良滑空速度24 km/h、離陸20 km/h、失速18 km/h、回復20.5 km/h。失速時は機首が下がり、降下して速度を回復する
 - Joystick 2は倒し量に依存せず、中央から倒して戻す1ジェスチャーを1°のピッチ／右ロール目標変更に変換する。SWで両目標を0°へ戻し、ハンドルはラダーに使う
 - Button 3は左ロール1°、Button 4は右ロール1°、Button 3+4同時押しは機首上げ1°としてJoystick 2を補助する
-- Joystick 1で固定推進力、飛行速度倍率、正の余剰出力に対する上昇倍率、ピッチ応答、最大上下動、ロール応答を一項目ずつ調整する飛行チューニング。調整中は既定95 Wの固定推進力を使い、エネルギー計算上の24 km/h水平飛行点を再現する
+- Joystick 1で固定推進力、正の余剰出力に対するパワーブースト、ピッチ応答、ロール応答を一項目ずつ調整する飛行チューニング。パワーブーストの既定値はx10で、調整中は既定95 Wの固定推進力を使う
 - 24 km/hを操舵基準速度とし、対気速度の二乗に応じてピッチ／バンクの到達速度を変える。最大角±12°／±25°は維持し、低速で鈍く、高速で速くなる
 - Button 5 PTTから`gpt-4o-mini-transcribe`、WSL/tmux Codex、`gpt-4o-mini-tts`をつなぐ走行中の短文音声対話
 - `SecretWorldRideSurface`タグを持つActorまたはComponentだけを走行面として使う下向きレイキャスト
 - 仮想自転車の正面1.25m（従来より20cm前）、中心高1.30m（従来より20cm上）に固定する54×30cmの不透明World Space VR計器。自動車のダッシュボードと同様に進行方向と一緒に動き、頭の向きには追従しない
-- 対気速度を主表示する人工水平儀、心拍、時刻、ケイデンス、実測／推進パワー、距離、対地高度`ALT AGL`、昇降率、Heading、Pitch、Bank、FPA、AoA、操舵効率、失速／過速度、楕円体高を含む地理座標の表示
+- 対気速度を主表示する人工水平儀、心拍、スタートからの経過時間、ケイデンス、実測／推進パワー、距離、対地高度`ALT AGL`、昇降率、Heading、Pitch、Bank、FPA、AoA、操舵効率、失速／過速度、楕円体高を含む地理座標の表示
 - BLEエラー、操舵追跡喪失、コース端、飛行切替を短時間だけHMD前方へ表示
 - 固定名`Saved/arrietty_ride.csv`への上書きログ
 
@@ -113,10 +114,10 @@ Forward Shading、4x MSAA、Instanced Stereo、Lumen/Virtual Shadow Maps/Motion 
 
 ## 検証状態
 
-- v0.11.0 UE 5.8.2 Editor: デジタル操舵、PTT UDPクライアントを含めビルド成功
-- v0.10.0 Win64 Development Game / Shipping: ビルド成功（v0.11.0は未実施）
+- v0.13.0 UE 5.8.2 Editor / Win64 Development Game: ビルド成功
+- v0.13.0: Garmin心拍、ESP32-IR風量制御、経過時間表示、実対気速度表示、揚力／ロール物理を統合
 - Visual Studio 2026ソリューション: 生成成功（ToolsVersion 18.0）
-- UE Automation: 10テスト成功（飛行チューニング、デジタル操舵、人力飛行、ESP32シリアルプロトコル、心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
+- UE Automation: 11テスト成功（飛行チューニング、デジタル操舵、人力飛行、ESP32シリアルプロトコル、ESP32-IR風量マッピング、心拍、FTMS、CSC、制御コマンド、走行規則、VR計器Widget内容）
 - NullRHIゲーム起動: `ArriettyRuntime`、`ArriettyGameMode`、`ArriettyDemo` Levelのロード成功
 - 別名の世界プロジェクト生成、Runtime更新、VS2026 Editorビルド: 成功
 - v0.9.0 Shipping cook/pak/archive: 成功、`Dist\Windows\Arrietty.exe`の応答確認済み。v0.10.0 Earth Levelは作成・保存済みで、Earthを含むcook/packageは未実施

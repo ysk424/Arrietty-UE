@@ -31,8 +31,7 @@ public:
 
     double GetPitchDegrees() const { return PitchDegrees; }
     double GetRollRightDegrees() const { return RollRightDegrees; }
-    double GetElevatorInput() const;
-    double GetAileronInput() const;
+    double GetBankDegrees() const { return -RollRightDegrees; }
 
 private:
     static int32 ConsumeGesture(double Value, bool& bArmed);
